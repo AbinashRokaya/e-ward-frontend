@@ -42,7 +42,25 @@ export default function VerifyCertificate() {
   return (
     <div>
       <h2>✅ Certificate is valid</h2>
-      <pre>{JSON.stringify(data, null, 2)}</pre>
+      <p>
+        <strong>Certificate No:</strong> {data.certificate_no}
+      </p>
+      <p>
+        <strong>Name:</strong> {data.child_full_name}
+      </p>
+      <p>
+        <strong>Status:</strong> {data.register_status}
+      </p>
+      <p>
+        <strong>Issued:</strong>{" "}
+        {new Date(data.issued_date).toLocaleDateString()}
+      </p>
+
+      {data.pdf_url && (
+        <a href={data.pdf_url} target="_blank" rel="noopener noreferrer">
+          View / Download Certificate PDF
+        </a>
+      )}
     </div>
   );
 }
