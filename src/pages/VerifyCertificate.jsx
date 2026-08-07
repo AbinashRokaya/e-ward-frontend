@@ -12,7 +12,7 @@ export default function VerifyCertificate() {
     async function checkCertificate() {
       try {
         const res = await fetch(
-          `${API_BASE}/v1/recommendation-letter/${id}/certificate/verify`,
+          `${API_BASE}/v1/recommendation-letter/certificate/verify/${id}`,
         );
         if (!res.ok) throw new Error("Not found");
         const json = await res.json();
