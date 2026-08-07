@@ -33,6 +33,7 @@ import WardChairpersonHome from "./components/ward_chairperson/WardChairpersonHo
 import WardSecretaryHome from "./components/ward_secretary/WardSecretaryHome.jsx";
 import ComplaintBoard from "./pages/ComplaintBoard.jsx";
 import FileComplaint from "./pages/FileComplaint.jsx";
+import VerifyCertificate from "./pages/VerifyCertificate.jsx";
 
 const router = createBrowserRouter([
   {
@@ -111,6 +112,10 @@ const router = createBrowserRouter([
       {
         path: "/complaint-file",
         element: <FileComplaint />,
+      },
+      {
+        path: "/verify/:id",
+        element: <VerifyCertificate />,
       },
     ],
   },
