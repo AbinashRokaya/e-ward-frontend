@@ -54,7 +54,6 @@ function Header() {
   const [fontStep, setFontStep] = useState(1);
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  // Check persistent token state from localStorage
   const [hasToken, setHasToken] = useState(
     Boolean(localStorage.getItem("token") || localStorage.getItem("user"))
   );
@@ -69,6 +68,7 @@ function Header() {
   }, [location.pathname]);
 
   const isLoggedIn = isLoginContext || hasToken;
+  const isNepali = language === "ne" || language === "np";
   const NAV_ITEMS = getNavItems(t, language, isLoggedIn, userRole);
 
   const handleLogout = () => {
@@ -83,11 +83,8 @@ function Header() {
 
   return (
     <header className="w-full bg-white shadow-sm font-sans border-b border-slate-200">
-      {/* Utility Bar */}
       <div className="bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
-
-          {/* Logo & Branding */}
           <div className="flex items-center gap-3 sm:gap-4">
             <img
               src={logo}
@@ -96,47 +93,42 @@ function Header() {
             />
             <div>
               <h1 className="text-lg sm:text-xl font-extrabold text-blue-950 tracking-tight leading-tight">
-                {language === "ne" ? "ई-वडा व्यवस्थापन प्रणाली" : "E-Ward Management System"}
+                {isNepali ? "ई-वडा व्यवस्थापन प्रणाली" : "E-Ward Management System"}
               </h1>
               <p className="text-xs sm:text-sm text-slate-600 font-medium hidden xs:block">
-                {language === "ne"
+                {isNepali
                   ? "स्थानीय सरकार, जनतासँगको सार्थक सम्बन्ध"
                   : "Local government, meaningful relationship with citizens"}
               </p>
             </div>
           </div>
 
-          {/* Desktop Controls */}
           <div className="hidden sm:flex items-center gap-4 text-xs sm:text-sm text-slate-600 shrink-0">
-
-            {/* Language Switcher */}
-            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
+            <div className="flex items-center gap-1 bg-slate-200/80 border border-slate-300 rounded-full p-1 shadow-sm">
               <button
                 type="button"
                 onClick={() => setLanguage("ne")}
-                className={`transition-colors cursor-pointer ${
-                  language === "ne"
-                    ? "font-bold text-blue-950"
-                    : "text-slate-500 hover:text-blue-900"
+                className={`cursor-pointer px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                  isNepali
+                    ? "bg-blue-900 text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                 }`}
               >
                 नेपाली
               </button>
-              <span className="text-slate-300">|</span>
               <button
                 type="button"
                 onClick={() => setLanguage("en")}
-                className={`transition-colors cursor-pointer ${
-                  language === "en"
-                    ? "font-bold text-blue-950"
-                    : "text-slate-500 hover:text-blue-900"
+                className={`cursor-pointer px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                  !isNepali
+                    ? "bg-blue-900 text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                 }`}
               >
                 English
               </button>
             </div>
 
-            {/* Font Sizer */}
             <div className="flex items-center gap-1">
               {[0, 1, 2].map((step) => (
                 <button
@@ -155,7 +147,6 @@ function Header() {
               ))}
             </div>
 
-            {/* Replaces Login with Logout button when logged in */}
             {isLoggedIn ? (
               <button
                 type="button"
@@ -163,7 +154,7 @@ function Header() {
                 className="bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2 rounded-lg text-xs sm:text-sm transition-colors shadow-sm flex items-center gap-1.5 cursor-pointer"
               >
                 <span>🚪</span>
-                <span>{t.logout || (language === "ne" ? "लगआउट" : "Logout")}</span>
+                <span>{t.logout || (isNepali ? "लगआउट" : "Logout")}</span>
               </button>
             ) : (
               <NavLink
@@ -171,12 +162,11 @@ function Header() {
                 className="bg-blue-950 hover:bg-blue-900 text-white font-semibold px-4 py-2 rounded-lg text-xs sm:text-sm transition-colors shadow-sm flex items-center gap-1.5"
               >
                 <span>👤</span>
-                <span>{t.login || (language === "ne" ? "लगइन" : "Login")}</span>
+                <span>{t.login || (isNepali ? "लगइन" : "Login")}</span>
               </NavLink>
             )}
           </div>
 
-          {/* Mobile Menu Toggle Button */}
           <button
             type="button"
             onClick={() => setMobileOpen(!mobileOpen)}
@@ -188,7 +178,6 @@ function Header() {
         </div>
       </div>
 
-      {/* Main Navigation Bar (Desktop) */}
       <nav className="hidden sm:block bg-blue-950">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center gap-1 overflow-x-auto">
           {NAV_ITEMS.map((item) => (
@@ -210,7 +199,6 @@ function Header() {
         </div>
       </nav>
 
-      {/* Mobile Navigation Dropdown */}
       {mobileOpen && (
         <nav className="sm:hidden bg-blue-950 border-t border-blue-900 px-4 py-3 space-y-1">
           {NAV_ITEMS.map((item) => (
@@ -232,19 +220,26 @@ function Header() {
           ))}
 
           <div className="pt-3 mt-3 border-t border-blue-900/80 flex items-center justify-between text-xs text-blue-100">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 bg-blue-900 border border-blue-800 rounded-full p-1 shadow-inner">
               <button
                 type="button"
                 onClick={() => setLanguage("ne")}
-                className={language === "ne" ? "font-bold text-white underline cursor-pointer" : "text-blue-200 cursor-pointer"}
+                className={`cursor-pointer px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                  isNepali
+                    ? "bg-white text-blue-950 shadow-sm"
+                    : "text-slate-300 hover:text-white"
+                }`}
               >
                 नेपाली
               </button>
-              <span>|</span>
               <button
                 type="button"
                 onClick={() => setLanguage("en")}
-                className={language === "en" ? "font-bold text-white underline cursor-pointer" : "text-blue-200 cursor-pointer"}
+                className={`cursor-pointer px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                  !isNepali
+                    ? "bg-white text-blue-950 shadow-sm"
+                    : "text-slate-300 hover:text-white"
+                }`}
               >
                 English
               </button>

@@ -4,7 +4,7 @@ import API_URL from "../api/api";
 import { LoginContext } from "../components/context/LoginContext";
 import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../context/LanguageContext";
-import govImage from "../assets/gov.jpg"; // Adjust path if your asset folder is named differently
+import govImage from "../assets/gov.jpg";
 
 const LOCAL_BODY_TYPES = [
   "Rural Municipality (गाउँपालिका)",
@@ -38,7 +38,7 @@ export default function AuthPage({ setRole: propSetRole, setisLogin: propSetIsLo
   const { login: authContextLogin } = useAuth() || {};
   const { language, setLanguage } = useLanguage();
 
-  const isNepali = language === "np" || language === "ne";
+  const isNepali = language === "ne";
 
   const [activeTab, setActiveTab] = useState("citizen");
   const [isRegisterMode, setIsRegisterMode] = useState(false);
@@ -56,8 +56,11 @@ export default function AuthPage({ setRole: propSetRole, setisLogin: propSetIsLo
   const [banner, setBanner] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const updateAuthState = (userData, token = "dummy-auth-token") => {
-    const role = userData.role || userData.user_role || (activeTab === "official" ? "wardsecretary" : "citizen");
+  const updateAuthState = (userData, token) => {
+    const role =
+      userData.role ||
+      userData.user_role ||
+      (activeTab === "official" ? "wardsecretary" : "citizen");
 
     localStorage.setItem("token", token);
     localStorage.setItem("user", JSON.stringify(userData));
@@ -88,16 +91,6 @@ export default function AuthPage({ setRole: propSetRole, setisLogin: propSetIsLo
 
     setLoading(true);
 
-    const userDataObj = {
-      fullName,
-      mobileNumber,
-      localBodyType,
-      localBodyName,
-      ward,
-      tole,
-      role: activeTab === "official" ? "wardsecretary" : "citizen",
-    };
-
     try {
       const endpoint = isRegisterMode
         ? `${API_URL}/v1/auth/register`
@@ -113,44 +106,61 @@ export default function AuthPage({ setRole: propSetRole, setisLogin: propSetIsLo
         body: JSON.stringify(payload),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (isRegisterMode) {
-          setBanner({
-            type: "success",
-            message: isNepali
-              ? "दर्ता सफल भयो! कृपया लगइन गर्नुहोस्।"
-              : "Registration successful! Please sign in.",
-          });
-          setIsRegisterMode(false);
-        } else {
-          const userDetails = data?.data?.user_details || userDataObj;
-          updateAuthState(userDetails, data?.data?.token || "session-token");
-          setTimeout(() => navigate("/home"), 400);
-        }
-      } else {
-        throw new Error("API Connection Failed");
+      let data = null;
+      try {
+        data = await res.json();
+      } catch {
+        // Response wasn't JSON — leave data as null, handled below
       }
-    } catch {
+
+      if (!res.ok) {
+        const serverMessage = data?.message || data?.error;
+        setBanner({
+          type: "error",
+          message:
+            serverMessage ||
+            (isNepali
+              ? "प्रमाणीकरण असफल भयो। कृपया विवरण जाँच गरी पुनः प्रयास गर्नुहोस्।"
+              : "Authentication failed. Please check your details and try again."),
+        });
+        return;
+      }
+
       if (isRegisterMode) {
-        updateAuthState(userDataObj, "demo-token");
         setBanner({
           type: "success",
-          message: isNepali ? "खाता दर्ता सफल भयो!" : "Account registered successfully!",
+          message: isNepali
+            ? "दर्ता सफल भयो! कृपया लगइन गर्नुहोस्।"
+            : "Registration successful! Please sign in.",
         });
-        setTimeout(() => navigate("/home"), 500);
-      } else {
-        const fallbackUser = {
-          fullName: fullName || "Ram Bahadur",
-          mobileNumber,
-          localBodyName: localBodyName || "Kathmandu Metropolitan City",
-          ward: ward || "4",
-          tole: tole || "Baluwatar",
-          role: activeTab === "official" ? "wardsecretary" : "citizen",
-        };
-        updateAuthState(fallbackUser, "demo-token");
-        setTimeout(() => navigate("/home"), 400);
+        setIsRegisterMode(false);
+        return;
       }
+
+      // Successful login
+      const userDetails = data?.data?.user_details;
+      const token = data?.data?.token;
+
+      if (!userDetails || !token) {
+        setBanner({
+          type: "error",
+          message: isNepali
+            ? "सर्भरबाट अपेक्षित डाटा प्राप्त भएन। पुनः प्रयास गर्नुहोस्।"
+            : "Unexpected response from server. Please try again.",
+        });
+        return;
+      }
+
+      updateAuthState(userDetails, token);
+      navigate("/home");
+    } catch (err) {
+      console.error("Auth request failed:", err);
+      setBanner({
+        type: "error",
+        message: isNepali
+          ? "सर्भरसँग जडान गर्न सकिएन। पछि पुनः प्रयास गर्नुहोस्।"
+          : "Could not reach the server. Please try again later.",
+      });
     } finally {
       setLoading(false);
     }
@@ -162,7 +172,7 @@ export default function AuthPage({ setRole: propSetRole, setisLogin: propSetIsLo
       <div className="absolute top-4 right-6 flex items-center gap-1 bg-slate-200/80 border border-slate-300 rounded-full p-1 shadow-sm">
         <button
           type="button"
-          onClick={() => setLanguage("np")}
+          onClick={() => setLanguage("ne")}
           className={`cursor-pointer px-3 py-1 rounded-full text-xs font-bold transition-all ${
             isNepali
               ? "bg-blue-900 text-white shadow-xs"

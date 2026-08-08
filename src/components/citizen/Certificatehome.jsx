@@ -5,9 +5,49 @@ import { CERTIFICATE_LIST } from "../config/certificateTypes";
 import { colorsFor } from "../config/colorClasses";
 import API_URL from "../../api/api";
 import CertificateManager from "./ertificateManager";
+import { useLanguage } from "../../context/LanguageContext";
 
-function CertificateCard({ config, onSelect }) {
+const CERT_LABELS_NP = {
+  birth: {
+    label: "जन्म दर्ता प्रमाणपत्र",
+    desc: "जन्म दर्ता प्रमाणपत्र हेर्नुहोस्, पेश गर्नुहोस् वा व्यवस्थापन गर्नुहोस्।",
+  },
+  death: {
+    label: "मृत्यु दर्ता प्रमाणपत्र",
+    desc: "मृत्यु दर्ता प्रमाणपत्र हेर्नुहोस्, पेश गर्नुहोस् वा व्यवस्थापन गर्नुहोस्।",
+  },
+  migration: {
+    label: "बसाईंसराई प्रमाणपत्र",
+    desc: "बसाईंसराई प्रमाणपत्र हेर्नुहोस्, पेश गर्नुहोस् वा व्यवस्थापन गर्नुहोस्।",
+  },
+  recommendation: {
+    label: "सिफारिस पत्र",
+    desc: "सिफारिस पत्र हेर्नुहोस्, पेश गर्नुहोस् वा व्यवस्थापन गर्नुहोस्।",
+  },
+  complaint: {
+    label: "गुनासो दर्ता",
+    desc: "गुनासो दर्ता हेर्नुहोस्, पेश गर्नुहोस् वा व्यवस्थापन गर्नुहोस्।",
+  },
+  notice: {
+    label: "वडा सूचनाहरू",
+    desc: "वडा सूचनाहरू हेर्नुहोस्, पेश गर्नुहोस् वा व्यवस्थापन गर्नुहोस्।",
+  },
+  tax: {
+    label: "मेरो कर",
+    desc: "मेरो कर रेकर्डहरू हेर्नुहोस्, पेश गर्नुहोस् वा व्यवस्थापन गर्नुहोस्।",
+  },
+};
+
+function CertificateCard({ config, onSelect, isNepali }) {
   const colors = colorsFor(config.color);
+  const npEntry = CERT_LABELS_NP[config.key];
+
+  const label = isNepali && npEntry ? npEntry.label : config.label;
+  const desc =
+    isNepali && npEntry
+      ? npEntry.desc
+      : `View, submit, or manage ${config.label.toLowerCase()} records.`;
+
   return (
     <button
       type="button"
@@ -15,10 +55,8 @@ function CertificateCard({ config, onSelect }) {
       className={`bg-white rounded-xl shadow-sm border border-slate-200 p-6 text-left transition-all hover:shadow-md ${colors.cardBorder} cursor-pointer`}
     >
       <div className="text-4xl mb-3">{config.icon}</div>
-      <h3 className="text-lg font-semibold text-slate-800">{config.label}</h3>
-      <p className="text-sm text-slate-500 mt-1">
-        View, submit, or manage {config.label.toLowerCase()} records.
-      </p>
+      <h3 className="text-lg font-semibold text-slate-800">{label}</h3>
+      <p className="text-sm text-slate-500 mt-1">{desc}</p>
     </button>
   );
 }
@@ -26,6 +64,9 @@ function CertificateCard({ config, onSelect }) {
 function CertificateHome() {
   const [selectedKey, setSelectedKey] = useState(null);
   const [wards, setWards] = useState([]);
+
+  const { language } = useLanguage();
+  const isNepali = language === "ne";
 
   useEffect(() => {
     fetch(`${API_URL}/v1/admin/ward`, {
@@ -60,10 +101,12 @@ function CertificateHome() {
     <main className="max-w-5xl mx-auto px-4 py-12 space-y-8">
       <div className="text-center space-y-2">
         <h1 className="text-3xl font-bold text-slate-800">
-          Ward Certificate Services
+          {isNepali ? "वडा प्रमाणपत्र तथा सेवाहरू" : "Ward Certificate Services"}
         </h1>
         <p className="text-slate-500">
-          Choose a certificate type to view, submit, or manage records.
+          {isNepali
+            ? "रेकर्डहरू हेर्न, पेश गर्न वा व्यवस्थापन गर्न प्रमाणपत्रको प्रकार छान्नुहोस्।"
+            : "Choose a certificate type to view, submit, or manage records."}
         </p>
       </div>
 
@@ -73,6 +116,7 @@ function CertificateHome() {
             key={config.key}
             config={config}
             onSelect={setSelectedKey}
+            isNepali={isNepali}
           />
         ))}
       </div>

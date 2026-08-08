@@ -75,6 +75,11 @@ const translations = {
     feature4Title: "सुरक्षित प्रणाली",
     feature4Desc: "तपाईंको डाटा सुरक्षित राख्न आधुनिक प्रविधिको प्रयोग।",
 
+    wardServicesTitle: "वडा प्रमाणपत्र सेवाहरू",
+    wardServicesSubtitle: "प्रमाणपत्रको प्रकार छान्नुहोस्...",
+    birthCertTitle: "जन्म प्रमाणपत्र",
+    birthCertDesc: "जन्म प्रमाणपत्र अभिलेखहरू हेर्नुहोस्, पेश गर्नुहोस्, वा व्यवस्थापन गर्नुहोस्।",
+
     // ---- Footer ----
     footerRights: "वडा कार्यालय — Ward Office. सबै अधिकार सुरक्षित।",
   },
@@ -154,6 +159,11 @@ const translations = {
     feature3Desc: "Convenient access to services from anywhere, at any time.",
     feature4Title: "Secure System",
     feature4Desc: "Modern technology used to keep your data secure.",
+
+    wardServicesTitle: "Ward Certificate Services",
+    wardServicesSubtitle: "Choose a certificate type to view, submit, or manage records.",
+    birthCertTitle: "Birth Certificate",
+    birthCertDesc: "View, submit, or manage birth certificate records.",
 
     // ---- Footer ----
     footerRights: "Ward Office. All rights reserved.",
