@@ -1,147 +1,119 @@
 import React, { useContext, useState } from "react";
 import API_URL from "../api/api";
 import { LoginContext } from "../components/context/LoginContext";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 
 function Login() {
-  const { isLogin, setisLogin, userRole, setRole } = useContext(LoginContext);
-  const nagavitor = useNavigate();
+  const loginContext = useContext(LoginContext) || {};
+  const setisLogin = loginContext.setisLogin || (() => {});
+  const setRole = loginContext.setRole || (() => {});
+
+  const navigate = useNavigate();
 
   const [loginData, setLoginData] = useState({
-    otp_phone_number: "",
-    otp_code: "",
+    phone_number: "",
+    password: "",
   });
 
-  const phoneRegex = /^(98|97)\d{8}$/;
-  const [isNumber, setIsNumber] = useState(false);
+  const handleLoginSubmit = (e) => {
+    e.preventDefault();
 
-  const handleButtonClick = () => {
-    if (isNumber === true) {
-      if (loginData.otp_code === "") return;
-      fetch(`${API_URL}/v1/users/otp/verify`, {
-        method: "POST",
-        credentials: "include",
-
-        headers: {
-          "Content-Type": "application/json",
-        },
-
-        body: JSON.stringify({
-          otp_phone_number: loginData.otp_phone_number.toString(),
-          otp_code: loginData.otp_code.toString(),
-        }),
-      })
-        .then((response) => {
-          return response.json().then((data) => {
-            if (!response.ok) {
-              throw data;
-            }
-            return data;
-          });
-        })
-        .then((data) => {
-          console.log("Login successful");
-          console.log(data);
-          setRole(data.data.user_details.user_role);
-          setIsNumber(true);
-          nagavitor("/Citizen");
-        })
-        .catch((err) => {
-          console.log(err);
-        });
-    } else if (isNumber === false) {
-      if (phoneRegex.test(loginData.otp_phone_number)) {
-        fetch(`${API_URL}/v1/users/otp`, {
-          method: "POST",
-          credentials: "include",
-
-          headers: {
-            "Content-Type": "application/json",
-          },
-
-          body: JSON.stringify({
-            otp_phone_number: loginData.otp_phone_number.toString(),
-          }),
-        })
-          .then((response) => {
-            return response.json().then((data) => {
-              if (!response.ok) {
-                throw data;
-              }
-              return data;
-            });
-          })
-          .then((data) => {
-            console.log(data);
-            setIsNumber(true);
-          })
-          .catch((err) => {
-            console.log(err);
-          });
-      }
+    if (!loginData.phone_number || !loginData.password) {
+      alert("Please enter both phone number and password.");
+      return;
     }
+
+    fetch(`${API_URL}/v1/users/login`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        phone_number: loginData.phone_number.trim(),
+        password: loginData.password,
+      }),
+    })
+      .then((res) => {
+        return res.json().then((data) => {
+          if (!res.ok) throw data;
+          return data;
+        });
+      })
+      .then((data) => {
+        console.log("Login successful", data);
+        setRole(data?.data?.user_details?.user_role || "citizen");
+        setisLogin(true);
+        navigate("/");
+      })
+      .catch((err) => {
+        console.error("Login Error:", err);
+        alert(err.message || "Invalid phone number or password.");
+      });
   };
 
   return (
-    <div className="flex flex-col items-center gap-3">
-      <img src="/logo.png" alt="Logo" className="w-20 h-20 object-contain" />
+    <div className="max-w-md mx-auto my-12 bg-white border border-slate-200 rounded-2xl p-8 shadow-sm flex flex-col items-center gap-4 font-sans">
+      <h1 className="text-2xl font-extrabold text-blue-950">E-Ward System</h1>
+      <p className="text-slate-500 text-xs">Login with your phone number and password</p>
 
-      <h1 className="text-3xl font-bold text-blue-700">E-Ward System</h1>
-
-      <p className="text-gray-500 text-sm">Login with your phone number</p>
-
-      <div className="w-full  ">
-        <label htmlFor="" className="text-md font-bold ">
-          Phone Number:
-        </label>
-        <input
-          type="text"
-          name="otp_phone_number"
-          value={loginData.otp_phone_number}
-          readOnly={isNumber}
-          onChange={(e) => {
-            if (e.target.value === undefined || isNaN(Number(e.target.value)))
-              return;
-            setLoginData((prev) => ({
-              ...prev,
-              [e.target.name]: Number(e.target.value),
-            }));
-          }}
-          placeholder="98XXXXXXXX"
-          className="border border-gray-400 p-2 rounded-lg w-full mt-1"
-        />
-      </div>
-      {isNumber && (
-        <div className="w-full  ">
-          <label htmlFor="" className="text-md font-bold ">
-            OTP Code:
+      <form onSubmit={handleLoginSubmit} className="w-full space-y-4">
+        {/* Phone Number Input */}
+        <div>
+          <label className="text-xs font-bold text-slate-700 block mb-1">
+            Phone Number:
           </label>
           <input
             type="text"
-            name="otp_code"
-            value={loginData.otp_code}
+            value={loginData.phone_number}
             onChange={(e) => {
-              if (e.target.value === undefined || isNaN(Number(e.target.value)))
-                return;
-              setLoginData((prev) => ({
-                ...prev,
-                [e.target.name]: Number(e.target.value),
-              }));
+              const val = e.target.value;
+              if (val === "" || /^\d+$/.test(val)) {
+                setLoginData((prev) => ({ ...prev, phone_number: val }));
+              }
             }}
-            placeholder="XXXXXX"
-            className="border border-gray-400 p-2 rounded-lg w-full mt-1"
+            placeholder="98XXXXXXXX"
+            maxLength={10}
+            required
+            className="border border-slate-300 p-2.5 rounded-lg w-full text-sm focus:outline-none focus:border-blue-900"
           />
         </div>
-      )}
 
-      <div className="w-full  mt-2 mb-2">
-        <button
-          onClick={handleButtonClick}
-          className="bg-blue-500 text-lg text-white p-2 rounded-lg w-full hover:bg-blue-400 hover:shadow-2xl hover:shadow-gray-600 active:bg-blue-600 cursor-pointer"
-        >
-          {isNumber === true ? "Login" : "Sent OTP"}
-        </button>
-      </div>
+        {/* Password Input */}
+        <div>
+          <label className="text-xs font-bold text-slate-700 block mb-1">
+            Password:
+          </label>
+          <input
+            type="password"
+            value={loginData.password}
+            onChange={(e) =>
+              setLoginData((prev) => ({ ...prev, password: e.target.value }))
+            }
+            placeholder="••••••••"
+            required
+            className="border border-slate-300 p-2.5 rounded-lg w-full text-sm focus:outline-none focus:border-blue-900"
+          />
+        </div>
+
+        {/* Login Button */}
+        <div className="pt-2">
+          <button
+            type="submit"
+            className="bg-blue-950 text-sm text-white font-semibold p-3 rounded-lg w-full hover:bg-blue-900 transition-colors shadow-sm cursor-pointer"
+          >
+            Login
+          </button>
+        </div>
+      </form>
+
+      {/* Registration Link */}
+      <p className="text-xs text-slate-500 mt-2">
+        Don't have an account?{" "}
+        <Link to="/register" className="text-blue-950 font-bold hover:underline">
+          Register here
+        </Link>
+      </p>
     </div>
   );
 }

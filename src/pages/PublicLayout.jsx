@@ -1,16 +1,15 @@
 import React from "react";
 import { Outlet } from "react-router-dom";
-import Header from "./components/header/Header";
+import Header from "../components/header/Header";
 
-function App() {
+export default function PublicLayout() {
   return (
-    <div className="flex flex-col min-h-screen font-sans bg-slate-50">
+    <div className="min-h-screen bg-slate-50 flex flex-col">
       <Header />
+      
       <main className="flex-grow">
         <Outlet />
       </main>
     </div>
   );
 }
-
-export default App;
