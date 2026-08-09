@@ -1,4 +1,4 @@
-import { useState, useContext } from "react";
+import { useState, useContext, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import API_URL from "../api/api";
 import { LoginContext } from "../components/context/LoginContext";
@@ -6,20 +6,13 @@ import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../context/LanguageContext";
 import govImage from "../assets/gov.jpg";
 
-const LOCAL_BODY_TYPES = [
-  "Rural Municipality (गाउँपालिका)",
-  "Municipality (नगरपालिका)",
-  "Sub-Metropolitan City (उपमहानगरपालिका)",
-  "Metropolitan City (महानगरपालिका)",
-];
-
 const tokens = {
   page: "min-h-screen bg-slate-50 flex flex-col justify-center items-center p-4 font-sans py-10 relative",
-  card: "bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden w-full max-w-lg",
+  card: "bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden w-full max-w-2xl",
   input:
-    "w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 outline-none transition-colors focus:border-blue-900 focus:ring-1 focus:ring-blue-900",
+    "w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 outline-none transition-colors focus:border-blue-900 focus:ring-1 focus:ring-blue-900 disabled:bg-slate-100 disabled:cursor-not-allowed",
   select:
-    "w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 outline-none transition-colors focus:border-blue-900 focus:ring-1 focus:ring-blue-900 bg-white",
+    "w-full border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 outline-none transition-colors focus:border-blue-900 focus:ring-1 focus:ring-blue-900 bg-white disabled:bg-slate-100 disabled:cursor-not-allowed",
   label: "block text-xs font-semibold text-slate-700 mb-1",
   tabBase:
     "w-1/2 text-center py-3.5 text-sm font-medium transition-colors border-b-2 cursor-pointer",
@@ -30,7 +23,20 @@ const tokens = {
     "w-full bg-blue-900 hover:bg-blue-950 disabled:bg-blue-300 text-white text-sm font-medium py-2.5 rounded-md transition-colors cursor-pointer shadow-sm mt-2",
   bannerSuccess: "bg-green-50 text-green-800 border border-green-200 p-3 rounded-md text-xs mb-4",
   bannerError: "bg-red-50 text-red-700 border border-red-200 p-3 rounded-md text-xs mb-4",
+  sectionHeading: "text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3 mt-4",
 };
+
+// Backend validates user_provience against exactly this list — keep in sync
+// with provience_list in schema/user_schema.py.
+const PROVINCES_FIXED = [
+  "Koshi",
+  "Madhesh",
+  "Bagmati",
+  "Gandaki",
+  "Lumbini",
+  "Karnali",
+  "Sudurpashchim",
+];
 
 export default function AuthPage({ setRole: propSetRole, setisLogin: propSetIsLogin }) {
   const navigate = useNavigate();
@@ -43,24 +49,95 @@ export default function AuthPage({ setRole: propSetRole, setisLogin: propSetIsLo
   const [activeTab, setActiveTab] = useState("citizen");
   const [isRegisterMode, setIsRegisterMode] = useState(false);
 
-  // Registration Fields
-  const [fullName, setFullName] = useState("");
-  const [mobileNumber, setMobileNumber] = useState("");
+  // ---- Login fields ----
+  const [loginPhone, setLoginPhone] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+
+  // ---- Registration fields (match UserRegisterationRequest exactly) ----
+  const [userName, setUserName] = useState("");
+  const [userNepaliName, setUserNepaliName] = useState("");
+  const [userPhone, setUserPhone] = useState("");
+  const [userCitizenshipNumber, setUserCitizenshipNumber] = useState("");
+  const [userEmail, setUserEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [localBodyType, setLocalBodyType] = useState(LOCAL_BODY_TYPES[1]);
-  const [localBodyName, setLocalBodyName] = useState("");
-  const [ward, setWard] = useState("");
-  const [tole, setTole] = useState("");
+  const [province, setProvince] = useState("");
+  const [district, setDistrict] = useState("");
+  const [municipality, setMunicipality] = useState("");
+  const [wardNumber, setWardNumber] = useState("");
 
+  const [wards, setWards] = useState([]);
   const [banner, setBanner] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  // Fetch ward list once, only when registration mode is active.
+  useEffect(() => {
+    if (!isRegisterMode) return;
+    const fetchWards = async () => {
+      try {
+        const res = await fetch(`${API_URL}/v1/admin/ward`);
+        const data = await res.json();
+        setWards(data?.data?.ward_list ?? data?.data ?? []);
+      } catch (err) {
+        console.error("Failed to load wards", err);
+      }
+    };
+    fetchWards();
+  }, [isRegisterMode]);
+
+  // Address cascade — district/municipality options depend on province/district
+  // chosen so far, and are cross-checked against the real ward list your
+  // backend validates against.
+  const districts = useMemo(() => {
+    if (!province) return [];
+    return [
+      ...new Set(
+        wards.filter((w) => w.ward_province === province).map((w) => w.ward_district)
+      ),
+    ].sort();
+  }, [wards, province]);
+
+  const municipalities = useMemo(() => {
+    if (!province || !district) return [];
+    return [
+      ...new Set(
+        wards
+          .filter((w) => w.ward_province === province && w.ward_district === district)
+          .map((w) => w.ward_municipality)
+      ),
+    ].sort();
+  }, [wards, province, district]);
+
+  const filteredWards = useMemo(() => {
+    if (!province || !district || !municipality) return [];
+    return wards
+      .filter(
+        (w) =>
+          w.ward_province === province &&
+          w.ward_district === district &&
+          w.ward_municipality === municipality
+      )
+      .sort((a, b) => Number(a.ward_no) - Number(b.ward_no));
+  }, [wards, province, district, municipality]);
+
+  const handleProvinceChange = (e) => {
+    setProvince(e.target.value);
+    setDistrict("");
+    setMunicipality("");
+    setWardNumber("");
+  };
+  const handleDistrictChange = (e) => {
+    setDistrict(e.target.value);
+    setMunicipality("");
+    setWardNumber("");
+  };
+  const handleMunicipalityChange = (e) => {
+    setMunicipality(e.target.value);
+    setWardNumber("");
+  };
+
   const updateAuthState = (userData, token) => {
-    const role =
-      userData.role ||
-      userData.user_role ||
-      (activeTab === "official" ? "wardsecretary" : "citizen");
+    const role = userData.user_role || userData.role || "citizen";
 
     localStorage.setItem("token", token);
     localStorage.setItem("user", JSON.stringify(userData));
@@ -75,11 +152,69 @@ export default function AuthPage({ setRole: propSetRole, setisLogin: propSetIsLo
     return role;
   };
 
-  async function handleSubmit(e) {
+  async function handleLoginSubmit(e) {
+    e.preventDefault();
+    setBanner(null);
+    setLoading(true);
+
+    try {
+      const res = await fetch(`${API_URL}/v1/users/login`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_phone_number: loginPhone,
+          password: loginPassword,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        setBanner({
+          type: "error",
+          message:
+            data?.detail ||
+            (isNepali
+              ? "लगइन असफल भयो। फोन नम्बर वा पासवर्ड जाँच गर्नुहोस्।"
+              : "Login failed. Check your phone number and password."),
+        });
+        return;
+      }
+
+      const userDetails = data?.data?.user_details;
+      const accessToken = data?.data?.access_token;
+
+      if (!userDetails || !accessToken) {
+        setBanner({
+          type: "error",
+          message: isNepali
+            ? "सर्भरबाट अपेक्षित डाटा प्राप्त भएन।"
+            : "Unexpected response from server.",
+        });
+        return;
+      }
+
+      updateAuthState(userDetails, accessToken);
+      navigate("/home");
+    } catch (err) {
+      console.error("Login request failed:", err);
+      setBanner({
+        type: "error",
+        message: isNepali
+          ? "सर्भरसँग जडान गर्न सकिएन। पछि पुनः प्रयास गर्नुहोस्।"
+          : "Could not reach the server. Please try again later.",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRegisterSubmit(e) {
     e.preventDefault();
     setBanner(null);
 
-    if (isRegisterMode && password !== confirmPassword) {
+    if (password !== confirmPassword) {
       setBanner({
         type: "error",
         message: isNepali
@@ -92,69 +227,48 @@ export default function AuthPage({ setRole: propSetRole, setisLogin: propSetIsLo
     setLoading(true);
 
     try {
-      const endpoint = isRegisterMode
-        ? `${API_URL}/v1/auth/register`
-        : `${API_URL}/v1/auth/login`;
+      const payload = {
+        user_name: userName,
+        user_nepali_name: userNepaliName,
+        user_phone_number: userPhone,
+        user_citizenship_number: userCitizenshipNumber,
+        user_email: userEmail,
+        user_provience: province,
+        user_district: district,
+        user_municipality: municipality,
+        user_ward_number: wardNumber ? Number(wardNumber) : undefined,
+        password,
+      };
 
-      const payload = isRegisterMode
-        ? { fullName, mobileNumber, password, localBodyType, localBodyName, ward, tole }
-        : { email: mobileNumber, password, login_type: activeTab };
-
-      const res = await fetch(endpoint, {
+      const res = await fetch(`${API_URL}/v1/users/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      let data = null;
-      try {
-        data = await res.json();
-      } catch {
-        // Response wasn't JSON — leave data as null, handled below
-      }
+      const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        const serverMessage = data?.message || data?.error;
         setBanner({
           type: "error",
           message:
-            serverMessage ||
+            data?.detail ||
             (isNepali
-              ? "प्रमाणीकरण असफल भयो। कृपया विवरण जाँच गरी पुनः प्रयास गर्नुहोस्।"
-              : "Authentication failed. Please check your details and try again."),
+              ? "दर्ता असफल भयो। कृपया सबै विवरण जाँच गर्नुहोस्।"
+              : "Registration failed. Please check all fields."),
         });
         return;
       }
 
-      if (isRegisterMode) {
-        setBanner({
-          type: "success",
-          message: isNepali
-            ? "दर्ता सफल भयो! कृपया लगइन गर्नुहोस्।"
-            : "Registration successful! Please sign in.",
-        });
-        setIsRegisterMode(false);
-        return;
-      }
-
-      // Successful login
-      const userDetails = data?.data?.user_details;
-      const token = data?.data?.token;
-
-      if (!userDetails || !token) {
-        setBanner({
-          type: "error",
-          message: isNepali
-            ? "सर्भरबाट अपेक्षित डाटा प्राप्त भएन। पुनः प्रयास गर्नुहोस्।"
-            : "Unexpected response from server. Please try again.",
-        });
-        return;
-      }
-
-      updateAuthState(userDetails, token);
-      navigate("/home");
+      setBanner({
+        type: "success",
+        message: isNepali
+          ? "दर्ता सफल भयो! तपाईंको खाता वडा कार्यालयको स्वीकृतिको पर्खाइमा छ।"
+          : "Registration successful! Your account is awaiting ward-office approval.",
+      });
+      setIsRegisterMode(false);
     } catch (err) {
-      console.error("Auth request failed:", err);
+      console.error("Register request failed:", err);
       setBanner({
         type: "error",
         message: isNepali
@@ -220,7 +334,6 @@ export default function AuthPage({ setRole: propSetRole, setisLogin: propSetIsLo
         </div>
 
         <div className="p-6">
-          {/* Government Emblem / Logo Image */}
           <div className="flex justify-center mb-3">
             <img
               src={govImage}
@@ -248,104 +361,227 @@ export default function AuthPage({ setRole: propSetRole, setisLogin: propSetIsLo
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-3">
-            {isRegisterMode && (
-              <>
+          {!isRegisterMode ? (
+            // ---------------------------------------------------------------
+            // LOGIN FORM
+            // ---------------------------------------------------------------
+            <form onSubmit={handleLoginSubmit} className="space-y-3">
+              <div>
+                <label className={tokens.label}>
+                  {isNepali ? "मोबाइल नम्बर (Mobile Number)" : "Mobile Number"}
+                </label>
+                <input
+                  type="tel"
+                  required
+                  pattern="(98|97)[0-9]{8}"
+                  value={loginPhone}
+                  onChange={(e) => setLoginPhone(e.target.value)}
+                  className={tokens.input}
+                  placeholder="98XXXXXXXX"
+                />
+              </div>
+
+              <div>
+                <label className={tokens.label}>
+                  {isNepali ? "पासवर्ड (Password)" : "Password"}
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  className={tokens.input}
+                  placeholder="••••••••"
+                />
+              </div>
+
+              <button type="submit" disabled={loading} className={tokens.buttonPrimary}>
+                {loading
+                  ? (isNepali ? "कृपया पर्खनुहोस्..." : "Please wait...")
+                  : activeTab === "citizen"
+                  ? (isNepali ? "नागरिक रूपमा लगइन गर्नुहोस्" : "Sign In as Citizen")
+                  : (isNepali ? "कर्मचारी रूपमा लगइन गर्नुहोस्" : "Sign In as Official")}
+              </button>
+            </form>
+          ) : (
+            // ---------------------------------------------------------------
+            // REGISTER FORM — matches UserRegisterationRequest exactly
+            // ---------------------------------------------------------------
+            <form onSubmit={handleRegisterSubmit} className="space-y-3">
+              <h3 className={tokens.sectionHeading}>
+                {isNepali ? "व्यक्तिगत विवरण" : "Personal Details"}
+              </h3>
+
+              <div>
+                <label className={tokens.label}>
+                  {isNepali ? "पूरा नाम (Full Name)" : "Full Name"}
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={userName}
+                  onChange={(e) => setUserName(e.target.value)}
+                  className={tokens.input}
+                  placeholder="e.g. Ram Bahadur Thapa"
+                />
+              </div>
+
+              <div>
+                <label className={tokens.label}>
+                  {isNepali ? "नाम (नेपालीमा)" : "Name (in Nepali)"}
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={userNepaliName}
+                  onChange={(e) => setUserNepaliName(e.target.value)}
+                  className={tokens.input}
+                  placeholder="राम बहादुर थापा"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className={tokens.label}>
-                    {isNepali ? "पूरा नाम (Full Name)" : "Full Name"}
+                    {isNepali ? "मोबाइल नम्बर (Mobile Number)" : "Mobile Number"}
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    pattern="(98|97)[0-9]{8}"
+                    value={userPhone}
+                    onChange={(e) => setUserPhone(e.target.value)}
+                    className={tokens.input}
+                    placeholder="98XXXXXXXX"
+                  />
+                </div>
+                <div>
+                  <label className={tokens.label}>
+                    {isNepali ? "नागरिकता नम्बर (Citizenship No.)" : "Citizenship Number"}
                   </label>
                   <input
                     type="text"
                     required
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
+                    value={userCitizenshipNumber}
+                    onChange={(e) => setUserCitizenshipNumber(e.target.value)}
                     className={tokens.input}
-                    placeholder="e.g. Ram Bahadur Thapa"
+                    placeholder="12-34-56789"
                   />
                 </div>
+              </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className={tokens.label}>
-                      {isNepali ? "तह (Local Body Type)" : "Local Body Type"}
-                    </label>
-                    <select
-                      value={localBodyType}
-                      onChange={(e) => setLocalBodyType(e.target.value)}
-                      className={tokens.select}
-                    >
-                      {LOCAL_BODY_TYPES.map((type) => (
-                        <option key={type} value={type}>
-                          {type}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={tokens.label}>
-                      {isNepali ? "स्थानिय तहको नाम (Local Body Name)" : "Local Body Name"}
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={localBodyName}
-                      onChange={(e) => setLocalBodyName(e.target.value)}
-                      className={tokens.input}
-                      placeholder="e.g. Kathmandu Metropolitan"
-                    />
-                  </div>
+              <div>
+                <label className={tokens.label}>
+                  {isNepali ? "इमेल ठेगाना (Email Address)" : "Email Address"}
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={userEmail}
+                  onChange={(e) => setUserEmail(e.target.value)}
+                  className={tokens.input}
+                  placeholder="ram@example.com"
+                />
+              </div>
+
+              <h3 className={tokens.sectionHeading}>
+                {isNepali ? "ठेगाना विवरण" : "Address Details"}
+              </h3>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className={tokens.label}>
+                    {isNepali ? "प्रदेश (Province)" : "Province"}
+                  </label>
+                  <select
+                    required
+                    value={province}
+                    onChange={handleProvinceChange}
+                    className={tokens.select}
+                  >
+                    <option value="">
+                      {isNepali ? "-- प्रदेश छान्नुहोस् --" : "-- Select Province --"}
+                    </option>
+                    {PROVINCES_FIXED.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className={tokens.label}>
-                      {isNepali ? "वडा नं. (Ward No.)" : "Ward No."}
-                    </label>
-                    <input
-                      type="number"
-                      required
-                      min="1"
-                      max="35"
-                      value={ward}
-                      onChange={(e) => setWard(e.target.value)}
-                      className={tokens.input}
-                      placeholder="e.g. 4"
-                    />
-                  </div>
-                  <div>
-                    <label className={tokens.label}>
-                      {isNepali ? "टोल (Tole)" : "Tole / Street"}
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={tole}
-                      onChange={(e) => setTole(e.target.value)}
-                      className={tokens.input}
-                      placeholder="e.g. Baluwatar"
-                    />
-                  </div>
+                <div>
+                  <label className={tokens.label}>
+                    {isNepali ? "जिल्ला (District)" : "District"}
+                  </label>
+                  <select
+                    required
+                    value={district}
+                    onChange={handleDistrictChange}
+                    disabled={!province}
+                    className={tokens.select}
+                  >
+                    <option value="">
+                      {isNepali ? "-- जिल्ला छान्नुहोस् --" : "-- Select District --"}
+                    </option>
+                    {districts.map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              </>
-            )}
 
-            <div>
-              <label className={tokens.label}>
-                {isNepali ? "मोबाइल नम्बर (Mobile Number)" : "Mobile Number"}
-              </label>
-              <input
-                type="tel"
-                required
-                pattern="[0-9]{10}"
-                value={mobileNumber}
-                onChange={(e) => setMobileNumber(e.target.value)}
-                className={tokens.input}
-                placeholder="98XXXXXXXX"
-              />
-            </div>
+                <div>
+                  <label className={tokens.label}>
+                    {isNepali ? "नगरपालिका (Municipality)" : "Municipality"}
+                  </label>
+                  <select
+                    required
+                    value={municipality}
+                    onChange={handleMunicipalityChange}
+                    disabled={!district}
+                    className={tokens.select}
+                  >
+                    <option value="">
+                      {isNepali ? "-- नगरपालिका छान्नुहोस् --" : "-- Select Municipality --"}
+                    </option>
+                    {municipalities.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-            {isRegisterMode ? (
+                <div>
+                  <label className={tokens.label}>
+                    {isNepali ? "वडा नं. (Ward No.)" : "Ward No."}
+                  </label>
+                  <select
+                    required
+                    value={wardNumber}
+                    onChange={(e) => setWardNumber(e.target.value)}
+                    disabled={!municipality}
+                    className={tokens.select}
+                  >
+                    <option value="">
+                      {isNepali ? "-- वडा छान्नुहोस् --" : "-- Select Ward --"}
+                    </option>
+                    {filteredWards.map((w) => (
+                      <option key={w.ward_id} value={w.ward_no}>
+                        {isNepali ? `वडा नं. ${w.ward_no}` : `Ward No. ${w.ward_no}`}
+                        {w.ward_name ? ` — ${w.ward_name}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <h3 className={tokens.sectionHeading}>
+                {isNepali ? "खाता सुरक्षा" : "Account Security"}
+              </h3>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className={tokens.label}>
@@ -354,6 +590,7 @@ export default function AuthPage({ setRole: propSetRole, setisLogin: propSetIsLo
                   <input
                     type="password"
                     required
+                    minLength={8}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className={tokens.input}
@@ -374,32 +611,14 @@ export default function AuthPage({ setRole: propSetRole, setisLogin: propSetIsLo
                   />
                 </div>
               </div>
-            ) : (
-              <div>
-                <label className={tokens.label}>
-                  {isNepali ? "पासवर्ड (Password)" : "Password"}
-                </label>
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className={tokens.input}
-                  placeholder="••••••••"
-                />
-              </div>
-            )}
 
-            <button type="submit" disabled={loading} className={tokens.buttonPrimary}>
-              {loading
-                ? (isNepali ? "कृपया पर्खनुहोस्..." : "Please wait...")
-                : isRegisterMode
-                ? (isNepali ? "खाता सिर्जना गर्नुहोस् (Register)" : "Register Account")
-                : activeTab === "citizen"
-                ? (isNepali ? "नागरिक रूपमा लगइन गर्नुहोस्" : "Sign In as Citizen")
-                : (isNepali ? "कर्मचारी रूपमा लगइन गर्नुहोस्" : "Sign In as Official")}
-            </button>
-          </form>
+              <button type="submit" disabled={loading} className={tokens.buttonPrimary}>
+                {loading
+                  ? (isNepali ? "पेश गर्दै..." : "Submitting...")
+                  : (isNepali ? "खाता सिर्जना गर्नुहोस्" : "Register Account")}
+              </button>
+            </form>
+          )}
 
           {activeTab === "citizen" && (
             <div className="mt-4 pt-3 border-t border-slate-100 text-center">
@@ -416,8 +635,8 @@ export default function AuthPage({ setRole: propSetRole, setisLogin: propSetIsLo
                   className="text-blue-900 font-bold hover:underline cursor-pointer ml-1"
                 >
                   {isRegisterMode
-                    ? (isNepali ? "लगइन गर्नुहोस् (Sign In)" : "Sign In Here")
-                    : (isNepali ? "यहाँ दर्ता गर्नुहोस् (Register Here)" : "Register Here")}
+                    ? (isNepali ? "लगइन गर्नुहोस्" : "Sign In Here")
+                    : (isNepali ? "यहाँ दर्ता गर्नुहोस्" : "Register Here")}
                 </button>
               </p>
             </div>
