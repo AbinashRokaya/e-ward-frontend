@@ -38,6 +38,16 @@ const PROVINCES_FIXED = [
   "Sudurpashchim",
 ];
 
+// Role -> destination after login. Keep in sync with the route list in
+// main.jsx (admin / citizen / wardchairperson / wardsecretary / validation).
+const ROLE_ROUTES = {
+  superadmin: "/admin",
+  citizen: "/citizen",
+  wardchairperson: "/wardchairperson",
+  wardsecretary: "/wardsecretary",
+  datavalidationofficer: "/validation",
+};
+
 export default function AuthPage({ setRole: propSetRole, setisLogin: propSetIsLogin }) {
   const navigate = useNavigate();
   const loginContext = useContext(LoginContext) || {};
@@ -86,8 +96,7 @@ export default function AuthPage({ setRole: propSetRole, setisLogin: propSetIsLo
   }, [isRegisterMode]);
 
   // Address cascade — district/municipality options depend on province/district
-  // chosen so far, and are cross-checked against the real ward list your
-  // backend validates against.
+  // chosen so far, cross-checked against the real ward list.
   const districts = useMemo(() => {
     if (!province) return [];
     return [
@@ -195,8 +204,8 @@ export default function AuthPage({ setRole: propSetRole, setisLogin: propSetIsLo
         return;
       }
 
-      updateAuthState(userDetails, accessToken);
-      navigate("/home");
+      const role = updateAuthState(userDetails, accessToken);
+      navigate(ROLE_ROUTES[role] || "/home");
     } catch (err) {
       console.error("Login request failed:", err);
       setBanner({
