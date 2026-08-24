@@ -4,34 +4,21 @@
 //   - "All Wards" (ward_id = null) -> country-wide totals + a ward
 //     leaderboard/comparison chart, hitting the /admin/... endpoints
 //     with no ward_id.
-//   - a specific ward -> the exact same charts as WardAnalytics.jsx,
-//     but for a ward the admin picked rather than their own — hitting
-//     the same /admin/... endpoints with ward_id set.
+//   - a specific ward -> the same charts as WardAnalytics.jsx, but for a
+//     ward the admin picked — same /admin/... endpoints with ward_id set.
 //
-// STYLING: Panel / StatCard / MiniStat below are restyled to match
-// the Officer List page (rounded-xl white cards, gray-200 border,
-// shadow-sm, indigo-900 table headers, rounded-full badges, blue/red
-// text action links). They're defined locally here rather than
-// imported from WardAnalytics so this page matches the app's actual
-// visual standard — move them back into WardAnalytics.jsx once that
-// file is updated to match, so both dashboards share one source again.
+// STYLING: Panel / StatCard / MiniStat / Badge and the chart palette now
+// come from analyticsUI.jsx, shared with WardAnalytics.jsx, so the two
+// dashboards can't drift apart again.
 //
-// LAYOUT: this component does NOT add its own page margin/padding —
-// it sits inside whatever content container the app already wraps
-// pages in (same one the Officer List page uses). An earlier version
-// used a negative-margin hack here to fight assumed parent padding;
-// that was wrong for this layout and caused the page to overflow the
-// viewport width (visible as a horizontal scrollbar) and the top nav
-// to clip. Just use normal spacing.
+// LAYOUT: this component does NOT add its own page margin/padding — it
+// sits inside whatever content container the role page already provides.
 //
 // WARD_ID TYPE: ward_id is a UUID string, not a number — the backend
-// (admin_analytics_router.py) parses it with uuid.UUID(...) and 400s
-// on anything else. Never wrap it in Number(...); treat it as an
-// opaque string throughout (comparisons, keys, and the query string).
+// parses it with uuid.UUID(...) and 400s on anything else. Never wrap it
+// in Number(...); treat it as an opaque string throughout.
 
 import { useEffect, useMemo, useState } from "react";
-import { toast } from "react-toastify";
-
 import {
   PieChart,
   Pie,
@@ -48,7 +35,23 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import API_URL from "../../api/api";
-import { MODULES, MONTH_LABELS, statusColor, humanize } from "./WardAnalytics";
+import { toast } from "react-toastify";
+import {
+  MODULES,
+  MONTH_LABELS,
+  CHART,
+  statusColor,
+  humanize,
+  SELECT_CLASS,
+  Panel,
+  StatCard,
+  MiniStat,
+  Badge,
+  rateTone,
+  BackButton,
+} from "./analyticsUI";
+
+const AXIS_TICK = { fontSize: 11, fill: CHART.axis };
 
 async function getJSON(path) {
   const res = await fetch(`${API_URL}${path}`, { credentials: "include" });
@@ -57,95 +60,15 @@ async function getJSON(path) {
   return body.data;
 }
 
-// ── shared presentational pieces, styled to match the Officer List page ──
-
-function Panel({ title, children }) {
-  return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
-      {title && (
-        <h3 className="text-[15px] font-bold text-gray-900 mb-5">{title}</h3>
-      )}
-      {children}
-    </div>
-  );
-}
-
-function StatCard({ label, value, accent = "#111827" }) {
-  return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
-      <p className="text-xs font-medium text-gray-500 mb-1.5">{label}</p>
-      <p className="text-2xl font-bold" style={{ color: accent }}>
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function MiniStat({ label, value, color = "#111827", prefix = "" }) {
-  return (
-    <div>
-      <p className="text-xs font-medium text-gray-500 mb-1.5">{label}</p>
-      <p className="text-xl font-bold" style={{ color }}>
-        {prefix}
-        {value}
-      </p>
-    </div>
-  );
-}
-
-// Rounded-full colored pill, same treatment as the Role column badges
-// on the Officer List page (gray/green/blue/purple by kind).
-const BADGE_STYLES = {
-  gray: "bg-gray-100 text-gray-700",
-  green: "bg-green-100 text-green-700",
-  blue: "bg-blue-100 text-blue-700",
-  purple: "bg-purple-100 text-purple-700",
-  red: "bg-red-100 text-red-700",
-  amber: "bg-amber-100 text-amber-700",
-};
-
-function Badge({ tone = "gray", children }) {
-  return (
-    <span
-      className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium ${BADGE_STYLES[tone]}`}
-    >
-      {children}
-    </span>
-  );
-}
-
-function rateTone(rate) {
-  if (rate < 60) return "red";
-  if (rate < 85) return "amber";
-  return "green";
-}
-
-// Shared select styling used for every filter dropdown across this page.
-const SELECT_CLASS =
-  "border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400";
-
-// Province -> District -> Municipality -> Ward, laid out as four
-// always-visible dropdowns matching the Ward Notices filter bar (not
-// disabled-until-parent like the previous version). Filtered client-side
-// from the ward list AdminHome already fetched for the Ward-management
-// card.
-//
-// PROVINCE FIELD: your WardTable/AddWardForm code only showed
-// ward_name/ward_district/ward_municipality/ward_no — no province field
-// on the ward record itself. This tries a few likely field names
-// (ward_province, ward_province_name, province) and falls back to
-// leaving the Province dropdown empty (just "All") if none exist. If
-// your Notice page's Province dropdown is reading from a separate
-// static province/district dataset (the one already built for the
-// registration form's cascading address dropdowns) rather than from
-// ward records, swap `getProvince` below to pull from that same
-// dataset instead.
-// Ward schema uses ward_province (confirmed against the backend's
-// Create Ward / Update Ward multipart schema).
+// Ward schema uses ward_province, confirmed against the backend's
+// Create Ward / Update Ward multipart schema.
 function getProvince(w) {
   return w.ward_province || null;
 }
 
+// Province -> District -> Municipality -> Ward, as four always-visible
+// dropdowns. Filtered client-side from the ward list AdminHome already
+// fetched for its ward-management card.
 function WardCascadeSelector({ wards, wardId, onChange }) {
   const [province, setProvince] = useState("");
   const [district, setDistrict] = useState("");
@@ -155,6 +78,7 @@ function WardCascadeSelector({ wards, wardId, onChange }) {
     () => [...new Set(wards.map(getProvince).filter(Boolean))].sort(),
     [wards],
   );
+
   const districts = useMemo(
     () =>
       [
@@ -167,6 +91,7 @@ function WardCascadeSelector({ wards, wardId, onChange }) {
       ].sort(),
     [wards, province],
   );
+
   const municipalities = useMemo(
     () =>
       [
@@ -183,6 +108,7 @@ function WardCascadeSelector({ wards, wardId, onChange }) {
       ].sort(),
     [wards, province, district],
   );
+
   const filteredWards = useMemo(
     () =>
       wards.filter(
@@ -213,6 +139,7 @@ function WardCascadeSelector({ wards, wardId, onChange }) {
           </option>
         ))}
       </select>
+
       <select
         value={district}
         onChange={(e) => {
@@ -229,6 +156,7 @@ function WardCascadeSelector({ wards, wardId, onChange }) {
           </option>
         ))}
       </select>
+
       <select
         value={municipality}
         onChange={(e) => {
@@ -244,13 +172,12 @@ function WardCascadeSelector({ wards, wardId, onChange }) {
           </option>
         ))}
       </select>
+
       <select
         value={wardId ?? "all"}
         onChange={(e) =>
-          // ward_id is a UUID string on the backend — do NOT wrap this
-          // in Number(...); that turns a UUID into NaN and produces a
-          // literal "ward_id=NaN" query string, which the backend
-          // correctly 400s on.
+          // ward_id is a UUID string — do NOT wrap in Number(), that
+          // produces "ward_id=NaN" which the backend correctly 400s on.
           onChange(e.target.value === "all" ? null : e.target.value)
         }
         className={`${SELECT_CLASS} font-medium`}
@@ -266,13 +193,12 @@ function WardCascadeSelector({ wards, wardId, onChange }) {
   );
 }
 
-// AdminHome already fetches the full ward list for the ward-management
-// card and holds it in `wards` state — pass that straight through here
+// AdminHome already fetches the full ward list — pass it straight through
 // instead of a second fetch of the same data.
 export default function AdminAnalytics({ wards = [], onBack }) {
   const [module, setModule] = useState("birth");
   const [year, setYear] = useState(new Date().getFullYear());
-  const [wardId, setWardId] = useState(null); // null = "All Wards" / country-wide; otherwise a UUID string
+  const [wardId, setWardId] = useState(null); // null = country-wide; else a UUID string
 
   const [vital, setVital] = useState(null);
   const [summary, setSummary] = useState(null);
@@ -347,17 +273,9 @@ export default function AdminAnalytics({ wards = [], onBack }) {
 
   return (
     <div className="space-y-6">
-      {onBack && (
-        <button
-          type="button"
-          onClick={onBack}
-          className="text-sm text-gray-500 hover:text-gray-800 flex items-center gap-1"
-        >
-          ← Back
-        </button>
-      )}
+      {onBack && <BackButton onClick={onBack} />}
 
-      {/* ── vital snapshot — country-wide or single-ward depending on selector ── */}
+      {/* ── vital snapshot — country-wide or single-ward ── */}
       {vital && (
         <Panel
           title={
@@ -365,29 +283,31 @@ export default function AdminAnalytics({ wards = [], onBack }) {
               ? `Country-Wide Vital Snapshot — ${vital.year}`
               : (() => {
                   const w = wards.find((w) => w.ward_id === wardId);
-                  return `${w ? w.ward_name || `Ward ${w.ward_no}` : `Ward ${wardId}`} — ${vital.year}`;
+                  return `${
+                    w ? w.ward_name || `Ward ${w.ward_no}` : `Ward ${wardId}`
+                  } — ${vital.year}`;
                 })()
           }
         >
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
-            <MiniStat label="Births" value={vital.births} color="#2563eb" />
-            <MiniStat label="Deaths" value={vital.deaths} color="#dc2626" />
+            <MiniStat label="Births" value={vital.births} color={CHART.primary} />
+            <MiniStat label="Deaths" value={vital.deaths} color={CHART.danger} />
             <MiniStat
               label="Natural Change"
               value={vital.natural_change}
-              color="#059669"
+              color={CHART.success}
               prefix={vital.natural_change >= 0 ? "+" : ""}
             />
             <MiniStat
               label="Migration Registrations"
               value={vital.migrations}
-              color="#7c3aed"
+              color={CHART.accent}
             />
           </div>
 
           {isCountryView && vital.births_by_ward?.length > 0 && (
             <div className="mt-6">
-              <p className="text-xs font-semibold text-gray-500 mb-3">
+              <p className="text-xs font-semibold text-slate-500 mb-3">
                 Births by Ward
               </p>
               <ResponsiveContainer
@@ -399,11 +319,11 @@ export default function AdminAnalytics({ wards = [], onBack }) {
                   layout="vertical"
                   margin={{ top: 4, right: 24, bottom: 4, left: 20 }}
                 >
-                  <CartesianGrid stroke="#f1f2f4" horizontal={false} />
+                  <CartesianGrid stroke={CHART.grid} horizontal={false} />
                   <XAxis
                     type="number"
                     allowDecimals={false}
-                    tick={{ fontSize: 11, fill: "#6b7280" }}
+                    tick={AXIS_TICK}
                     axisLine={false}
                     tickLine={false}
                   />
@@ -411,12 +331,12 @@ export default function AdminAnalytics({ wards = [], onBack }) {
                     type="category"
                     dataKey="ward_name"
                     width={110}
-                    tick={{ fontSize: 11, fill: "#6b7280" }}
+                    tick={AXIS_TICK}
                     axisLine={false}
                     tickLine={false}
                   />
                   <Tooltip />
-                  <Bar dataKey="births" fill="#2563eb" radius={[0, 6, 6, 0]} />
+                  <Bar dataKey="births" fill={CHART.primary} radius={[0, 6, 6, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -427,11 +347,7 @@ export default function AdminAnalytics({ wards = [], onBack }) {
       {/* ── filters ── */}
       <Panel>
         <div className="flex gap-3 flex-wrap items-center">
-          <WardCascadeSelector
-            wards={wards}
-            wardId={wardId}
-            onChange={setWardId}
-          />
+          <WardCascadeSelector wards={wards} wardId={wardId} onChange={setWardId} />
           <select
             value={module}
             onChange={(e) => setModule(e.target.value)}
@@ -458,41 +374,35 @@ export default function AdminAnalytics({ wards = [], onBack }) {
       </Panel>
 
       {loading || !summary ? (
-        <p className="text-sm text-gray-500">Loading analytics…</p>
+        <p className="text-sm text-slate-500">Loading analytics…</p>
       ) : (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
-            <StatCard
-              label="Total Records"
-              value={summary.total}
-              accent="#111827"
-            />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <StatCard label="Total Records" value={summary.total} accent={CHART.deep} />
             <StatCard
               label={
-                summary.status_summary.RESOLVED !== undefined
+                summary.status_summary?.RESOLVED !== undefined
                   ? "Resolved"
                   : "Certificate Issued"
               }
               value={summary.issued}
-              accent="#059669"
+              accent={CHART.success}
             />
-            <StatCard
-              label="Rejected"
-              value={summary.rejected}
-              accent="#dc2626"
-            />
+            <StatCard label="Rejected" value={summary.rejected} accent={CHART.danger} />
             <StatCard
               label="Completion Rate"
               value={`${summary.completion_rate}%`}
-              accent="#2563eb"
+              accent={CHART.primary}
             />
           </div>
 
-          {/* ── ward leaderboard — only in country-wide view; this is the
-              panel that actually answers "which wards are behind" ── */}
+          {/* ── ward leaderboard — country-wide view only. This is the
+              panel that answers "which wards are behind". ── */}
           {isCountryView && wardBreakdown.length > 0 && (
             <Panel
-              title={`Ward Comparison — ${MODULES.find((m) => m.value === module)?.label}`}
+              title={`Ward Comparison — ${
+                MODULES.find((m) => m.value === module)?.label
+              }`}
             >
               <ResponsiveContainer
                 width="100%"
@@ -503,11 +413,11 @@ export default function AdminAnalytics({ wards = [], onBack }) {
                   layout="vertical"
                   margin={{ top: 4, right: 24, bottom: 4, left: 20 }}
                 >
-                  <CartesianGrid stroke="#f1f2f4" horizontal={false} />
+                  <CartesianGrid stroke={CHART.grid} horizontal={false} />
                   <XAxis
                     type="number"
                     domain={[0, 100]}
-                    tick={{ fontSize: 11, fill: "#6b7280" }}
+                    tick={AXIS_TICK}
                     axisLine={false}
                     tickLine={false}
                     unit="%"
@@ -516,7 +426,7 @@ export default function AdminAnalytics({ wards = [], onBack }) {
                     type="category"
                     dataKey="ward_name"
                     width={110}
-                    tick={{ fontSize: 11, fill: "#6b7280" }}
+                    tick={AXIS_TICK}
                     axisLine={false}
                     tickLine={false}
                   />
@@ -532,10 +442,10 @@ export default function AdminAnalytics({ wards = [], onBack }) {
                         key={w.ward_id}
                         fill={
                           w.completion_rate < 60
-                            ? "#dc2626"
+                            ? CHART.danger
                             : w.completion_rate < 85
-                              ? "#d97706"
-                              : "#059669"
+                              ? CHART.warning
+                              : CHART.success
                         }
                       />
                     ))}
@@ -543,26 +453,23 @@ export default function AdminAnalytics({ wards = [], onBack }) {
                 </BarChart>
               </ResponsiveContainer>
 
-              {/* Wrapped in its own overflow-x-auto so a wide table
-                  scrolls internally instead of stretching the whole
-                  page and producing a page-level horizontal scrollbar. */}
+              {/* Own overflow-x-auto so a wide table scrolls internally
+                  instead of stretching the page. */}
               <div className="overflow-x-auto mt-6 -mx-1">
                 <table className="w-full text-sm min-w-[560px]">
                   <thead>
-                    <tr className="text-left border-b border-gray-100">
-                      <th className="py-2 px-1 font-semibold text-indigo-900">
-                        Ward
-                      </th>
-                      <th className="py-2 px-1 font-semibold text-indigo-900 text-right">
+                    <tr className="text-left border-b border-slate-100">
+                      <th className="py-2 px-1 font-semibold text-blue-900">Ward</th>
+                      <th className="py-2 px-1 font-semibold text-blue-900 text-right">
                         Total
                       </th>
-                      <th className="py-2 px-1 font-semibold text-indigo-900 text-right">
+                      <th className="py-2 px-1 font-semibold text-blue-900 text-right">
                         Issued
                       </th>
-                      <th className="py-2 px-1 font-semibold text-indigo-900 text-right">
+                      <th className="py-2 px-1 font-semibold text-blue-900 text-right">
                         Rejected
                       </th>
-                      <th className="py-2 px-1 font-semibold text-indigo-900 text-right">
+                      <th className="py-2 px-1 font-semibold text-blue-900 text-right">
                         Rate
                       </th>
                       <th />
@@ -572,18 +479,16 @@ export default function AdminAnalytics({ wards = [], onBack }) {
                     {wardBreakdown.map((w) => (
                       <tr
                         key={w.ward_id}
-                        className="border-b border-gray-100 last:border-0"
+                        className="border-b border-slate-100 last:border-0"
                       >
-                        <td className="py-2.5 px-1 text-gray-800">
-                          {w.ward_name}
-                        </td>
-                        <td className="py-2.5 px-1 text-right text-gray-700">
+                        <td className="py-2.5 px-1 text-slate-800">{w.ward_name}</td>
+                        <td className="py-2.5 px-1 text-right text-slate-700">
                           {w.total}
                         </td>
-                        <td className="py-2.5 px-1 text-right text-gray-700">
+                        <td className="py-2.5 px-1 text-right text-slate-700">
                           {w.issued}
                         </td>
-                        <td className="py-2.5 px-1 text-right text-gray-700">
+                        <td className="py-2.5 px-1 text-right text-slate-700">
                           {w.rejected}
                         </td>
                         <td className="py-2.5 px-1 text-right">
@@ -595,7 +500,7 @@ export default function AdminAnalytics({ wards = [], onBack }) {
                           <button
                             type="button"
                             onClick={() => setWardId(w.ward_id)}
-                            className="text-blue-600 hover:underline font-medium whitespace-nowrap"
+                            className="text-blue-900 hover:underline font-medium whitespace-nowrap"
                           >
                             Drill in →
                           </button>
@@ -608,8 +513,7 @@ export default function AdminAnalytics({ wards = [], onBack }) {
             </Panel>
           )}
 
-          {/* ── status breakdown + monthly trend — same charts whether
-              country-wide (aggregated) or a single drilled-into ward ── */}
+          {/* ── status breakdown + monthly trend ── */}
           <div className="grid md:grid-cols-2 gap-6">
             <Panel title="Status Breakdown">
               <ResponsiveContainer width="100%" height={240}>
@@ -624,54 +528,52 @@ export default function AdminAnalytics({ wards = [], onBack }) {
                     outerRadius={85}
                     paddingAngle={2}
                   >
-                    {Object.keys(summary.status_summary).map((key) => (
+                    {Object.keys(summary.status_summary || {}).map((key) => (
                       <Cell key={key} fill={statusColor(key)} />
                     ))}
                   </Pie>
-                  <PieTooltip
-                    formatter={(value, name) => [value, humanize(name)]}
-                  />
+                  <PieTooltip formatter={(value, name) => [value, humanize(name)]} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="flex flex-wrap gap-3 justify-center mt-3">
-                {Object.entries(summary.status_summary || {}).map(
-                  ([key, value]) => (
+                {Object.entries(summary.status_summary || {}).map(([key, value]) => (
+                  <span
+                    key={key}
+                    className="text-xs text-slate-600 flex items-center gap-1.5"
+                  >
                     <span
-                      key={key}
-                      className="text-xs text-gray-600 flex items-center gap-1.5"
-                    >
-                      <span
-                        className="w-2 h-2 rounded-full inline-block"
-                        style={{ background: statusColor(key) }}
-                      />
-                      {humanize(key)} · {value}
-                    </span>
-                  ),
-                )}
+                      className="w-2 h-2 rounded-full inline-block"
+                      style={{ background: statusColor(key) }}
+                    />
+                    {humanize(key)} · {value}
+                  </span>
+                ))}
               </div>
             </Panel>
 
             <Panel
-              title={`Monthly Submissions — ${year}${isCountryView ? " (All Wards)" : ""}`}
+              title={`Monthly Submissions — ${year}${
+                isCountryView ? " (All Wards)" : ""
+              }`}
             >
               <ResponsiveContainer width="100%" height={240}>
                 <LineChart
-                  data={summary.monthly_trend.map((m) => ({
+                  data={(summary.monthly_trend || []).map((m) => ({
                     ...m,
                     label: MONTH_LABELS[m.month - 1],
                   }))}
                   margin={{ top: 4, right: 16, bottom: 4, left: 0 }}
                 >
-                  <CartesianGrid stroke="#f1f2f4" vertical={false} />
+                  <CartesianGrid stroke={CHART.grid} vertical={false} />
                   <XAxis
                     dataKey="label"
-                    tick={{ fontSize: 11, fill: "#6b7280" }}
+                    tick={AXIS_TICK}
                     axisLine={false}
                     tickLine={false}
                   />
                   <YAxis
                     allowDecimals={false}
-                    tick={{ fontSize: 11, fill: "#6b7280" }}
+                    tick={AXIS_TICK}
                     axisLine={false}
                     tickLine={false}
                   />
@@ -679,7 +581,7 @@ export default function AdminAnalytics({ wards = [], onBack }) {
                   <Line
                     type="monotone"
                     dataKey="submitted"
-                    stroke="#2563eb"
+                    stroke={CHART.primary}
                     strokeWidth={2}
                     dot={false}
                     name="Submitted"
@@ -689,6 +591,7 @@ export default function AdminAnalytics({ wards = [], onBack }) {
             </Panel>
           </div>
 
+          {/* ── pending aging + rejection reasons ── */}
           <div className="grid md:grid-cols-2 gap-6">
             <Panel title="Pending Records — How Long They've Waited">
               <ResponsiveContainer width="100%" height={200}>
@@ -699,11 +602,11 @@ export default function AdminAnalytics({ wards = [], onBack }) {
                   layout="vertical"
                   margin={{ top: 4, right: 24, bottom: 4, left: 20 }}
                 >
-                  <CartesianGrid stroke="#f1f2f4" horizontal={false} />
+                  <CartesianGrid stroke={CHART.grid} horizontal={false} />
                   <XAxis
                     type="number"
                     allowDecimals={false}
-                    tick={{ fontSize: 11, fill: "#6b7280" }}
+                    tick={AXIS_TICK}
                     axisLine={false}
                     tickLine={false}
                   />
@@ -711,23 +614,21 @@ export default function AdminAnalytics({ wards = [], onBack }) {
                     type="category"
                     dataKey="bucket"
                     width={90}
-                    tick={{ fontSize: 11.5, fill: "#6b7280" }}
+                    tick={AXIS_TICK}
                     axisLine={false}
                     tickLine={false}
                   />
                   <Tooltip />
-                  <Bar dataKey="count" fill="#d97706" radius={[0, 6, 6, 0]} />
+                  <Bar dataKey="count" fill={CHART.warning} radius={[0, 6, 6, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </Panel>
 
             <Panel title="Recent Rejection Reasons">
               {(summary.recent_rejection_reasons || []).length === 0 ? (
-                <p className="text-sm text-gray-400">
-                  No rejections recorded yet.
-                </p>
+                <p className="text-sm text-slate-400">No rejections recorded yet.</p>
               ) : (
-                <ul className="space-y-2 text-sm text-gray-700 max-h-[200px] overflow-y-auto">
+                <ul className="space-y-2 text-sm text-slate-700 max-h-[200px] overflow-y-auto">
                   {(summary.recent_rejection_reasons || []).map((text, i) => (
                     <li key={i} className="border-l-2 border-red-300 pl-3">
                       {text}
@@ -738,6 +639,7 @@ export default function AdminAnalytics({ wards = [], onBack }) {
             </Panel>
           </div>
 
+          {/* ── module-specific panels ── */}
           {module === "death" && extra && (
             <div className="grid md:grid-cols-2 gap-6">
               <Panel title="Cause of Death">
@@ -749,11 +651,11 @@ export default function AdminAnalytics({ wards = [], onBack }) {
                     layout="vertical"
                     margin={{ top: 4, right: 24, bottom: 4, left: 20 }}
                   >
-                    <CartesianGrid stroke="#f1f2f4" horizontal={false} />
+                    <CartesianGrid stroke={CHART.grid} horizontal={false} />
                     <XAxis
                       type="number"
                       allowDecimals={false}
-                      tick={{ fontSize: 11, fill: "#6b7280" }}
+                      tick={AXIS_TICK}
                       axisLine={false}
                       tickLine={false}
                     />
@@ -761,15 +663,16 @@ export default function AdminAnalytics({ wards = [], onBack }) {
                       type="category"
                       dataKey="cause"
                       width={100}
-                      tick={{ fontSize: 11.5, fill: "#6b7280" }}
+                      tick={AXIS_TICK}
                       axisLine={false}
                       tickLine={false}
                     />
                     <Tooltip />
-                    <Bar dataKey="count" fill="#dc2626" radius={[0, 6, 6, 0]} />
+                    <Bar dataKey="count" fill={CHART.danger} radius={[0, 6, 6, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </Panel>
+
               <Panel title="Age at Death">
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart
@@ -778,21 +681,21 @@ export default function AdminAnalytics({ wards = [], onBack }) {
                     )}
                     margin={{ top: 4, right: 16, bottom: 4, left: 0 }}
                   >
-                    <CartesianGrid stroke="#f1f2f4" vertical={false} />
+                    <CartesianGrid stroke={CHART.grid} vertical={false} />
                     <XAxis
                       dataKey="bucket"
-                      tick={{ fontSize: 11, fill: "#6b7280" }}
+                      tick={AXIS_TICK}
                       axisLine={false}
                       tickLine={false}
                     />
                     <YAxis
                       allowDecimals={false}
-                      tick={{ fontSize: 11, fill: "#6b7280" }}
+                      tick={AXIS_TICK}
                       axisLine={false}
                       tickLine={false}
                     />
                     <Tooltip />
-                    <Bar dataKey="count" fill="#7c3aed" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="count" fill={CHART.accent} radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </Panel>
@@ -809,11 +712,11 @@ export default function AdminAnalytics({ wards = [], onBack }) {
                   layout="vertical"
                   margin={{ top: 4, right: 24, bottom: 4, left: 20 }}
                 >
-                  <CartesianGrid stroke="#f1f2f4" horizontal={false} />
+                  <CartesianGrid stroke={CHART.grid} horizontal={false} />
                   <XAxis
                     type="number"
                     allowDecimals={false}
-                    tick={{ fontSize: 11, fill: "#6b7280" }}
+                    tick={AXIS_TICK}
                     axisLine={false}
                     tickLine={false}
                   />
@@ -821,12 +724,12 @@ export default function AdminAnalytics({ wards = [], onBack }) {
                     type="category"
                     dataKey="reason"
                     width={120}
-                    tick={{ fontSize: 11.5, fill: "#6b7280" }}
+                    tick={AXIS_TICK}
                     axisLine={false}
                     tickLine={false}
                   />
                   <Tooltip />
-                  <Bar dataKey="count" fill="#7c3aed" radius={[0, 6, 6, 0]} />
+                  <Bar dataKey="count" fill={CHART.accent} radius={[0, 6, 6, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </Panel>
@@ -843,11 +746,11 @@ export default function AdminAnalytics({ wards = [], onBack }) {
                     layout="vertical"
                     margin={{ top: 4, right: 24, bottom: 4, left: 20 }}
                   >
-                    <CartesianGrid stroke="#f1f2f4" horizontal={false} />
+                    <CartesianGrid stroke={CHART.grid} horizontal={false} />
                     <XAxis
                       type="number"
                       allowDecimals={false}
-                      tick={{ fontSize: 11, fill: "#6b7280" }}
+                      tick={AXIS_TICK}
                       axisLine={false}
                       tickLine={false}
                     />
@@ -855,15 +758,16 @@ export default function AdminAnalytics({ wards = [], onBack }) {
                       type="category"
                       dataKey="category"
                       width={110}
-                      tick={{ fontSize: 11.5, fill: "#6b7280" }}
+                      tick={AXIS_TICK}
                       axisLine={false}
                       tickLine={false}
                     />
                     <Tooltip />
-                    <Bar dataKey="count" fill="#2563eb" radius={[0, 6, 6, 0]} />
+                    <Bar dataKey="count" fill={CHART.primary} radius={[0, 6, 6, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </Panel>
+
               <Panel title="Priority + SLA">
                 <ResponsiveContainer width="100%" height={140}>
                   <BarChart
@@ -872,28 +776,28 @@ export default function AdminAnalytics({ wards = [], onBack }) {
                     )}
                     margin={{ top: 4, right: 16, bottom: 4, left: 0 }}
                   >
-                    <CartesianGrid stroke="#f1f2f4" vertical={false} />
+                    <CartesianGrid stroke={CHART.grid} vertical={false} />
                     <XAxis
                       dataKey="priority"
-                      tick={{ fontSize: 11, fill: "#6b7280" }}
+                      tick={AXIS_TICK}
                       axisLine={false}
                       tickLine={false}
                     />
                     <YAxis
                       allowDecimals={false}
-                      tick={{ fontSize: 11, fill: "#6b7280" }}
+                      tick={AXIS_TICK}
                       axisLine={false}
                       tickLine={false}
                     />
                     <Tooltip />
-                    <Bar dataKey="count" fill="#d97706" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="count" fill={CHART.warning} radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
-                <div className="flex gap-6 mt-3">
+                <div className="flex gap-6 mt-4">
                   <MiniStat
                     label="Avg Resolution"
                     value={`${extra.avg_resolution_days}d`}
-                    color="#111827"
+                    color={CHART.deep}
                   />
                   <MiniStat
                     label="SLA Compliance"
@@ -905,8 +809,8 @@ export default function AdminAnalytics({ wards = [], onBack }) {
                     color={
                       extra.sla_compliance_pct != null &&
                       extra.sla_compliance_pct < 80
-                        ? "#dc2626"
-                        : "#059669"
+                        ? CHART.danger
+                        : CHART.success
                     }
                   />
                 </div>
