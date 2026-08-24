@@ -30,6 +30,8 @@
 // opaque string throughout (comparisons, keys, and the query string).
 
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "react-toastify";
+
 import {
   PieChart,
   Pie,
@@ -46,7 +48,6 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import API_URL from "../../api/api";
-import toast from "react-hot-toast";
 import { MODULES, MONTH_LABELS, statusColor, humanize } from "./WardAnalytics";
 
 async function getJSON(path) {
@@ -139,8 +140,10 @@ const SELECT_CLASS =
 // registration form's cascading address dropdowns) rather than from
 // ward records, swap `getProvince` below to pull from that same
 // dataset instead.
+// Ward schema uses ward_province (confirmed against the backend's
+// Create Ward / Update Ward multipart schema).
 function getProvince(w) {
-  return w.ward_province || w.ward_province_name || w.province || null;
+  return w.ward_province || null;
 }
 
 function WardCascadeSelector({ wards, wardId, onChange }) {

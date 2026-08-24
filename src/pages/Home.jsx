@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useContext } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import { useLanguage } from "../context/LanguageContext";
 import { LoginContext } from "../components/context/LoginContext";
+import { wardApi, noticeApi } from "../api/endpoints";
 import wardImage from "../assets/ward.png";
 
+// Backend role enum is: superadmin | citizen | wardchairperson |
+// wardsecretary | datavalidationofficer. Keep in sync with Header.jsx,
+// AuthPage.jsx, and the route list in main.jsx.
 const ROLE_ROUTES = {
-  admin: "/admin",
+  superadmin: "/admin",
   citizen: "/citizen",
   wardchairperson: "/wardchairperson",
   wardsecretary: "/wardsecretary",
@@ -95,70 +99,67 @@ const QUICK_CATEGORY_META = [
 
 export default function Home() {
   const [query, setQuery] = useState("");
-  const { isLogin, userRole } = useContext(LoginContext);
+  const { isLogin, userRole, logout } = useContext(LoginContext);
   const dashboardRoute = ROLE_ROUTES[userRole] || "/";
 
   const [notices, setNotices] = useState([]);
   const [loadingNotices, setLoadingNotices] = useState(true);
-  const [isLoggedInState, setIsLoggedInState] = useState(false);
   const [userData, setUserData] = useState(null);
 
   const { language, t } = useLanguage();
-  const navigate = useNavigate();
-
   const isNepali = language === "np" || language === "ne";
 
   useEffect(() => {
-    const token = localStorage.getItem("token") || localStorage.getItem("user");
-    if (token) {
-      setIsLoggedInState(true);
-    }
-
-    // Safely parse user details saved during registration/login
+    // User details saved by AuthPage on successful login.
     try {
       const savedUser = localStorage.getItem("user");
-      if (savedUser) {
-        setUserData(JSON.parse(savedUser));
-      }
+      if (savedUser) setUserData(JSON.parse(savedUser));
     } catch (e) {
       console.error("Failed to parse user data from localStorage", e);
     }
 
     let isMounted = true;
+
+    // The previous version called /api/notices/published, which doesn't
+    // exist on this backend — it always threw and always fell back to a
+    // hardcoded dummy notice, so the homepage looked functional while
+    // showing invented data. Real published notices come from
+    // /v1/notice/{ward_id}/all, which needs a ward id: use the logged-in
+    // user's ward when available, otherwise the first ward in the system
+    // so anonymous visitors still see something real.
     const fetchPublishedNotices = async () => {
       try {
         setLoadingNotices(true);
-        const response = await fetch("/api/notices/published");
-        const contentType = response.headers.get("content-type");
 
-        if (response.ok && contentType && contentType.includes("application/json")) {
-          const data = await response.json();
-          if (isMounted) setNotices(data || []);
-        } else {
-          if (isMounted) {
-            setNotices([
-              {
-                id: 1,
-                day: "२१",
-                month: "जेठ",
-                title: "वडा कार्यालयबाट जग्गा करसम्बन्धी महत्त्वपूर्ण सूचना",
-                formattedDate: "२०८३ जेठ २१",
-              },
-            ]);
-          }
+        let wardId = null;
+        try {
+          const savedUser = JSON.parse(localStorage.getItem("user") || "null");
+          wardId = savedUser?.user_ward_id || null;
+        } catch {
+          wardId = null;
         }
+
+        if (!wardId) {
+          const wardsRes = await wardApi.getAll();
+          const wardList = wardsRes?.data?.ward_list ?? wardsRes?.data ?? [];
+          wardId = wardList[0]?.ward_id || null;
+        }
+
+        if (!wardId) {
+          if (isMounted) setNotices([]);
+          return;
+        }
+
+        const res = await noticeApi.getAllForWard(wardId, {
+          notice_status: "PUBLISHED",
+        });
+        const list = res?.data?.notice_list ?? res?.data ?? [];
+        if (isMounted) setNotices(Array.isArray(list) ? list.slice(0, 4) : []);
       } catch (error) {
-        if (isMounted) {
-          setNotices([
-            {
-              id: 1,
-              day: "२१",
-              month: "जेठ",
-              title: "वडा कार्यालयबाट जग्गा करसम्बन्धी महत्त्वपूर्ण सूचना",
-              formattedDate: "२०८३ जेठ २१",
-            },
-          ]);
-        }
+        console.error("Failed to load notices:", error);
+        // Show the genuine empty state rather than fabricated notices —
+        // a citizen seeing invented notices is worse than seeing none.
+        if (isMounted) setNotices([]);
       } finally {
         if (isMounted) setLoadingNotices(false);
       }
@@ -170,30 +171,20 @@ export default function Home() {
     };
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    localStorage.removeItem("userRole");
-    localStorage.removeItem("role");
-    setIsLoggedInState(false);
-    navigate("/");
-  };
-
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
       <section className="relative bg-gradient-to-r from-sky-50 via-blue-50/40 to-slate-100 border-b border-slate-200/60 overflow-hidden">
         <div className="max-w-7xl mx-auto px-5 py-10 lg:py-14 relative flex flex-col lg:flex-row items-center gap-8">
-          
+
           <div className="flex-1 max-w-xl z-10">
-            {/* Dynamic Registered User Address Banner */}
-            {userData && (userData.localBodyName || userData.fullName) && (
+            {/* Registered user's address banner */}
+            {userData && (userData.user_municipality || userData.user_name) && (
               <div className="mb-4 inline-flex items-center gap-2 bg-blue-900/10 border border-blue-200 text-blue-950 px-3.5 py-1.5 rounded-full text-xs font-semibold shadow-xs">
                 <span>📍</span>
                 <span>
-                  {userData.fullName ? `${userData.fullName} | ` : ""}
-                  {userData.localBodyName || "वडा कार्यालय"}
-                  {userData.ward ? `, वडा नं. ${userData.ward}` : ""}
-                  {userData.tole ? `, ${userData.tole}` : ""}
+                  {userData.user_name ? `${userData.user_name} | ` : ""}
+                  {userData.user_municipality || "वडा कार्यालय"}
+                  {userData.user_ward_number ? `, वडा नं. ${userData.user_ward_number}` : ""}
                 </span>
               </div>
             )}
@@ -204,11 +195,11 @@ export default function Home() {
                 {t?.heroTitleLine2 || (isNepali ? "समृद्ध समाज" : "Prosperous Society")}
               </span>
             </h1>
-            
+
             <p className="mt-4 text-slate-600 text-sm md:text-base leading-relaxed">
-              {t?.heroSubtitle || 
-                (isNepali 
-                  ? "प्रविधिको प्रयोगबाट पारदर्शी, छिटोछरितो र गुणस्तरीय सेवा प्रदान गर्दै जनताको विश्वास जित्दै अघि बढ्दै।" 
+              {t?.heroSubtitle ||
+                (isNepali
+                  ? "प्रविधिको प्रयोगबाट पारदर्शी, छिटोछरितो र गुणस्तरीय सेवा प्रदान गर्दै जनताको विश्वास जित्दै अघि बढ्दै।"
                   : "Delivering transparent, swift, and quality public services powered by modern technology.")}
             </p>
 
@@ -237,7 +228,7 @@ export default function Home() {
                 to={dashboardRoute}
                 className="mt-4 inline-flex items-center gap-2 bg-white text-blue-950 hover:bg-blue-50 font-semibold text-sm px-5 py-2.5 rounded-md transition-colors shadow-sm border border-slate-200"
               >
-                मेरो ड्यासबोर्ड (Go to My Dashboard) →
+                {isNepali ? "मेरो ड्यासबोर्ड" : "Go to My Dashboard"} →
               </NavLink>
             )}
 
@@ -254,31 +245,22 @@ export default function Home() {
                 </NavLink>
               ))}
 
-              {isLogin || isLoggedInState ? (
+              {isLogin ? (
                 <button
-                  onClick={handleLogout}
+                  onClick={logout}
                   className="bg-red-50 hover:bg-red-100 border border-red-200 rounded-full px-4 py-1.5 text-xs font-bold text-red-700 shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
                 >
                   <span>🚪</span>
                   <span>{isNepali ? "लगआउट" : "Logout"}</span>
                 </button>
               ) : (
-                <>
-                  <NavLink
-                    to="/"
-                    className="bg-white/90 hover:bg-white border border-slate-200/90 rounded-full px-3.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition-all hover:text-blue-950 hover:border-blue-300 flex items-center gap-1.5"
-                  >
-                    <span>👷</span>
-                    <span>{isNepali ? "कर्मचारी" : "Employee"}</span>
-                  </NavLink>
-                  <NavLink
-                    to="/"
-                    className="bg-white/90 hover:bg-white border border-slate-200/90 rounded-full px-3.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition-all hover:text-blue-950 hover:border-blue-300 flex items-center gap-1.5"
-                  >
-                    <span>🎖️</span>
-                    <span>{isNepali ? "पदाधिकारी" : "Official"}</span>
-                  </NavLink>
-                </>
+                <NavLink
+                  to="/login"
+                  className="bg-white/90 hover:bg-white border border-slate-200/90 rounded-full px-3.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition-all hover:text-blue-950 hover:border-blue-300 flex items-center gap-1.5"
+                >
+                  <span>👷</span>
+                  <span>{isNepali ? "कर्मचारी लगइन" : "Staff Login"}</span>
+                </NavLink>
               )}
             </div>
           </div>
@@ -299,17 +281,19 @@ export default function Home() {
 
       <section className="max-w-7xl mx-auto px-5 pt-12 pb-10">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
+
           <div className="lg:col-span-2 bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm">
             <div className="flex items-center justify-between mb-6 pb-3 border-b border-slate-100">
               <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                <span className="text-blue-600" aria-hidden="true">🎯</span> {t?.quickServicesTitle || (isNepali ? "छिटो पहुँच सेवाहरू" : "Quick Access Services")}
+                <span className="text-blue-600" aria-hidden="true">🎯</span>{" "}
+                {t?.quickServicesTitle || (isNepali ? "छिटो पहुँच सेवाहरू" : "Quick Access Services")}
               </h2>
-              <NavLink 
-                to="/services" 
+              <NavLink
+                to="/services"
                 className="text-xs font-semibold text-blue-900 hover:text-blue-700 flex items-center gap-1 transition-colors"
               >
-                {t?.viewAllServices || (isNepali ? "सबै सेवाहरू हेर्नुहोस्" : "View All Services")} <span aria-hidden="true">→</span>
+                {t?.viewAllServices || (isNepali ? "सबै सेवाहरू हेर्नुहोस्" : "View All Services")}{" "}
+                <span aria-hidden="true">→</span>
               </NavLink>
             </div>
 
@@ -340,13 +324,15 @@ export default function Home() {
             <div>
               <div className="flex items-center justify-between mb-6 pb-3 border-b border-slate-100">
                 <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                  <span className="text-blue-600" aria-hidden="true">📢</span> {t?.noticesTitle || (isNepali ? "सूचना तथा समाचार" : "Notices & News")}
+                  <span className="text-blue-600" aria-hidden="true">📢</span>{" "}
+                  {t?.noticesTitle || (isNepali ? "सूचना तथा समाचार" : "Notices & News")}
                 </h2>
                 <NavLink
                   to="/NoticeBoard"
                   className="text-xs font-semibold text-blue-900 hover:text-blue-700 flex items-center gap-1 transition-colors"
                 >
-                  {t?.viewAllNotices || (isNepali ? "सबै हेर्नुहोस्" : "View All")} <span aria-hidden="true">→</span>
+                  {t?.viewAllNotices || (isNepali ? "सबै हेर्नुहोस्" : "View All")}{" "}
+                  <span aria-hidden="true">→</span>
                 </NavLink>
               </div>
 
@@ -365,29 +351,34 @@ export default function Home() {
                 </div>
               ) : (
                 <ul className="divide-y divide-slate-100">
-                  {notices.map((n, idx) => (
-                    <li
-                      key={n.id || idx}
-                      className="group py-3.5 flex items-start gap-3 cursor-pointer hover:bg-slate-50/80 rounded-lg px-2 transition-colors"
-                    >
-                      <div className="bg-blue-50 text-blue-900 border border-blue-100 rounded-lg px-2.5 py-1.5 text-center shrink-0 min-w-[48px]">
-                        <p className="text-sm font-extrabold leading-none text-blue-950">
-                          {n.dateDay || n.day || "—"}
-                        </p>
-                        <p className="text-[10px] font-medium text-blue-700 mt-0.5">
-                          {n.dateMonth || n.month || (isNepali ? "जेठ" : "Jestha")}
-                        </p>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-slate-700 group-hover:text-blue-900 transition-colors leading-snug line-clamp-2">
-                          {n.title || n.text}
-                        </p>
-                        <span className="text-[10px] text-slate-400 mt-1 block">
-                          {n.fullDate || n.formattedDate || ""}
-                        </span>
-                      </div>
-                    </li>
-                  ))}
+                  {notices.map((n, idx) => {
+                    const created = n.created_at ? new Date(n.created_at) : null;
+                    return (
+                      <li
+                        key={n.notice_id || idx}
+                        className="group py-3.5 flex items-start gap-3 cursor-pointer hover:bg-slate-50/80 rounded-lg px-2 transition-colors"
+                      >
+                        <div className="bg-blue-50 text-blue-900 border border-blue-100 rounded-lg px-2.5 py-1.5 text-center shrink-0 min-w-[48px]">
+                          <p className="text-sm font-extrabold leading-none text-blue-950">
+                            {created ? created.getDate() : "—"}
+                          </p>
+                          <p className="text-[10px] font-medium text-blue-700 mt-0.5">
+                            {created
+                              ? created.toLocaleString(isNepali ? "ne-NP" : "en-US", { month: "short" })
+                              : ""}
+                          </p>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-slate-700 group-hover:text-blue-900 transition-colors leading-snug line-clamp-2">
+                            {n.notice_title}
+                          </p>
+                          <span className="text-[10px] text-slate-400 mt-1 block">
+                            {created ? created.toLocaleDateString() : ""}
+                          </span>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
@@ -417,7 +408,8 @@ export default function Home() {
       </section>
 
       <p className="text-center text-xs text-slate-400 py-6">
-        © {new Date().getFullYear()} {t?.footerRights || (isNepali ? "सबै अधिकार सुरक्षित। e-वडा प्रणाली" : "All rights reserved. e-Ward System")}
+        © {new Date().getFullYear()}{" "}
+        {t?.footerRights || (isNepali ? "सबै अधिकार सुरक्षित। e-वडा प्रणाली" : "All rights reserved. e-Ward System")}
       </p>
     </div>
   );

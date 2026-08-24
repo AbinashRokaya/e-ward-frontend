@@ -5,23 +5,25 @@ import AdminHome from "../components/admin/Adminhome";
 import WardSecretaryHome from "../components/ward_secretary/WardSecretaryHome";
 import WardChairpersonHome from "../components/ward_chairperson/WardChairpersonHome";
 import DataValidationHome from "../components/datavalidation/DataValidationHome";
-import Citizen from "../components/citizen/Citizen";
+import CertificateHome from "../components/citizen/Certificatehome";
 
-// Single "/dashboard" route. Whoever lands here sees the home screen that
-// matches their role, so Login.jsx and Header.jsx only ever need to link
-// to one place instead of one route per role.
+// Single "/dashboard" route that renders whichever role home matches the
+// logged-in user. The app also routes each role home directly (/admin,
+// /citizen, /wardsecretary, ...), so this is a convenience entry point —
+// delete this file and its route if you'd rather keep only the flat routes.
 function Dashboard() {
   const loginContext = useContext(LoginContext) || {};
   const isLogin = loginContext.isLogin ?? false;
   const userRole = loginContext.userRole;
 
-  // Not logged in at all — bounce to login instead of showing any dashboard.
   if (!isLogin) {
     return <Navigate to="/login" replace />;
   }
 
   switch (userRole) {
-    case "admin":
+    // Backend role enum is "superadmin", not "admin" — this previously read
+    // "admin", never matched, and silently showed admins the citizen view.
+    case "superadmin":
       return <AdminHome />;
     case "wardsecretary":
       return <WardSecretaryHome />;
@@ -31,7 +33,7 @@ function Dashboard() {
       return <DataValidationHome />;
     case "citizen":
     default:
-      return <Citizen />;
+      return <CertificateHome />;
   }
 }
 

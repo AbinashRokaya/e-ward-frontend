@@ -27,7 +27,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import API_URL from "../../api/api"; // matches the default-export pattern used in DataValidationHome.jsx
-import toast from "react-hot-toast"; // adjust to whatever toast lib you use elsewhere — not visible in the files shared so far
+import { toast } from "react-toastify";
 
 export const MODULES = [
   { value: "birth", label: "Birth Registration" },

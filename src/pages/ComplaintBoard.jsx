@@ -30,8 +30,11 @@ function ComplaintBoard() {
   const [dateTo, setDateTo] = useState("");
   const [selectedComplaint, setSelectedComplaint] = useState(null);
 
-  useEffect(() => {
-    fetch(`${API_URL}/v1/complaint/all`, {
+    useEffect(() => {
+    // "/all" is the ward-wide officer queue — it returns every complaint in
+    // the ward, including other citizens'. This page is "My Complaints", so
+    // it must use "/" which is scoped to the logged-in user.
+    fetch(`${API_URL}/v1/complaint/`, {
       method: "GET",
       credentials: "include",
     })
@@ -45,7 +48,7 @@ function ComplaintBoard() {
       .catch((err) => console.error("Failed to load complaints:", err))
       .finally(() => setLoading(false));
   }, []);
-
+  
   const filtered = complaints.filter((c) => {
     if (search && !c.subject.toLowerCase().includes(search.toLowerCase()))
       return false;

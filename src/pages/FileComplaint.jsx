@@ -188,10 +188,12 @@ function FileComplaint() {
       .finally(() => setSubmitting(false));
   }
 
-  const previewComplaint = {
+    const previewComplaint = {
     complaint_number: "—",
     complaint_category: formData.complaint_category,
-    complaint_status: "DRAFT",
+    // Preview only — this record hasn't been submitted, so it has no real
+    // backend status yet. SUBMITTED is what it will become on submit.
+    complaint_status: "SUBMITTED",
     subject: formData.subject,
     description: formData.description,
     location: formData.location,

@@ -1,18 +1,21 @@
-import React, { useContext, useState, useEffect } from "react";
-import { NavLink, useNavigate, useLocation } from "react-router-dom";
+import React, { useContext, useState } from "react";
+import { NavLink, useNavigate } from "react-router-dom";
 import { LoginContext } from "../context/LoginContext";
 import { useLanguage } from "../../context/LanguageContext";
 import logo from "../../assets/nepal-sarkar.png";
 
+// Backend role enum is: superadmin | citizen | wardchairperson |
+// wardsecretary | datavalidationofficer. Keep in sync with AuthPage.jsx
+// and the route list in main.jsx.
 const ROLE_ROUTES = {
-  admin: "/admin",
+  superadmin: "/admin",
   citizen: "/citizen",
   wardchairperson: "/wardchairperson",
   wardsecretary: "/wardsecretary",
   datavalidationofficer: "/validation",
 };
 
-const getNavItems = (t = {}, language = "ne", isLoggedIn = false, userRole = null) => {
+const getNavItems = (t = {}, language = "ne", isLogin = false, userRole = null) => {
   const isNepali = language === "ne" || language === "np";
 
   const items = [
@@ -25,7 +28,7 @@ const getNavItems = (t = {}, language = "ne", isLoggedIn = false, userRole = nul
     { to: "/contact", label: t.contact || (isNepali ? "सम्पर्क" : "Contact"), icon: "📞" },
   ];
 
-  if (isLoggedIn && userRole && userRole !== "citizen" && ROLE_ROUTES[userRole]) {
+  if (isLogin && userRole && userRole !== "citizen" && ROLE_ROUTES[userRole]) {
     items.splice(1, 0, {
       to: ROLE_ROUTES[userRole],
       label: t.dashboard || (isNepali ? "ड्यासबोर्ड" : "Dashboard"),
@@ -38,10 +41,9 @@ const getNavItems = (t = {}, language = "ne", isLoggedIn = false, userRole = nul
 
 function Header() {
   const loginContext = useContext(LoginContext) || {};
-  const isLoginContext = loginContext.isLogin ?? false;
+  const isLogin = loginContext.isLogin ?? false;
   const userRole = loginContext.userRole ?? null;
-  const setisLogin = loginContext.setisLogin || (() => {});
-  const setRole = loginContext.setRole || (() => {});
+  const contextLogout = loginContext.logout || (() => {});
 
   const languageContext = useLanguage() || {};
   const language = languageContext.language || "ne";
@@ -49,34 +51,15 @@ function Header() {
   const t = languageContext.t || {};
 
   const navigate = useNavigate();
-  const location = useLocation();
 
   const [fontStep, setFontStep] = useState(1);
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const [hasToken, setHasToken] = useState(
-    Boolean(localStorage.getItem("token") || localStorage.getItem("user"))
-  );
-
-  useEffect(() => {
-    const checkToken = () => {
-      setHasToken(Boolean(localStorage.getItem("token") || localStorage.getItem("user")));
-    };
-    checkToken();
-    window.addEventListener("storage", checkToken);
-    return () => window.removeEventListener("storage", checkToken);
-  }, [location.pathname]);
-
-  const isLoggedIn = isLoginContext || hasToken;
   const isNepali = language === "ne" || language === "np";
-  const NAV_ITEMS = getNavItems(t, language, isLoggedIn, userRole);
+  const NAV_ITEMS = getNavItems(t, language, isLogin, userRole);
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    setisLogin(false);
-    setRole(null);
-    setHasToken(false);
+    contextLogout();
     setMobileOpen(false);
     navigate("/login");
   };
@@ -147,7 +130,7 @@ function Header() {
               ))}
             </div>
 
-            {isLoggedIn ? (
+            {isLogin ? (
               <button
                 type="button"
                 onClick={handleLogout}
@@ -245,7 +228,7 @@ function Header() {
               </button>
             </div>
 
-            {isLoggedIn ? (
+            {isLogin ? (
               <button
                 type="button"
                 onClick={handleLogout}
