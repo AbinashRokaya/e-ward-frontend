@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useContext } from "react";
 import ReactDOM from "react-dom/client";
 import {
   createBrowserRouter,
@@ -22,7 +22,6 @@ import MigrationRegistration from "./pages/MigrationRegistration.jsx";
 import RecommendationLetter from "./pages/RecommendationLetter.jsx";
 import FileComplaint from "./pages/FileComplaint.jsx";
 import NoticeBoard from "./pages/NoticeBoard.jsx";
-import DocumentsList from "./pages/DocumentsList.jsx";
 import ComplaintBoard from "./pages/ComplaintBoard.jsx";
 import AuthPage from "./pages/Authpage.jsx";
 
@@ -39,7 +38,7 @@ import AdminUsers from "./pages/admin/Users.jsx";
 // Context Providers
 import { LanguageProvider } from "./context/LanguageContext.jsx";
 import { AuthProvider } from "./context/AuthContext.jsx";
-import { LoginProvider } from "./components/context/LoginContext.jsx";
+import { LoginProvider, LoginContext } from "./components/context/LoginContext.jsx";
 
 import "./index.css";
 
@@ -81,38 +80,53 @@ function ErrorBoundary() {
   );
 }
 
-// Authentication Guard: Blocks unauthenticated users from accessing protected routes
-function ProtectedRoute({ children }) {
-  const isAuthenticated = Boolean(
-    localStorage.getItem("token") || localStorage.getItem("user")
-  );
+// Role -> home route, used to send an already-logged-in visitor away from
+// the login page instead of making them look at a form they don't need.
+const ROLE_ROUTES = {
+  superadmin: "/admin",
+  citizen: "/citizen",
+  wardchairperson: "/wardchairperson",
+  wardsecretary: "/wardsecretary",
+  datavalidationofficer: "/validation",
+};
 
-  if (!isAuthenticated) {
+// Blocks unauthenticated users from protected routes. Reads LoginContext
+// rather than localStorage directly, so a logout updates the guard in the
+// same render instead of only after a refresh.
+//
+// NOTE: this is a UI convenience, not security — anyone can set
+// localStorage.userRole in devtools and walk past it. The real protection is
+// the backend, which checks the httpOnly access_token cookie on every
+// endpoint and 401s regardless of what the frontend believes.
+function ProtectedRoute({ children }) {
+  const { isLogin } = useContext(LoginContext) || {};
+
+  if (!isLogin) {
     return <Navigate to="/login" replace />;
   }
 
   return children;
 }
 
-const router = createBrowserRouter([
-  // Standalone Login Routes (Renders ONLY the Auth card, no Header/Layout)
-  {
-    path: "/",
-    element: <AuthPage />,
-    errorElement: <ErrorBoundary />,
-  },
-  {
-    path: "/login",
-    element: <AuthPage />,
-    errorElement: <ErrorBoundary />,
-  },
-  {
-    path: "/register",
-    element: <AuthPage />,
-    errorElement: <ErrorBoundary />,
-  },
+// Sends an already-logged-in visitor straight to their dashboard rather than
+// showing them the sign-in form again.
+function AuthRoute() {
+  const { isLogin, userRole } = useContext(LoginContext) || {};
 
-  // Protected App Routes (Loads <App /> layout with Header & subpages only after login)
+  if (isLogin) {
+    return <Navigate to={ROLE_ROUTES[userRole] || "/home"} replace />;
+  }
+
+  return <AuthPage />;
+}
+
+const router = createBrowserRouter([
+  // Standalone auth routes — render only the auth card, no Header/layout.
+  { path: "/", element: <AuthRoute />, errorElement: <ErrorBoundary /> },
+  { path: "/login", element: <AuthRoute />, errorElement: <ErrorBoundary /> },
+  { path: "/register", element: <AuthRoute />, errorElement: <ErrorBoundary /> },
+
+  // Everything else sits behind login, inside the App layout (Header + Outlet).
   {
     element: (
       <ProtectedRoute>
@@ -123,13 +137,13 @@ const router = createBrowserRouter([
     children: [
       { path: "home", element: <Home /> },
 
-      // Public pages
+      // Informational pages
       { path: "about", element: <AboutWard /> },
       { path: "contact", element: <Contact /> },
       { path: "services", element: <Services /> },
       { path: "all-services", element: <Services /> },
 
-      // Service Registration Forms
+      // Service registration forms
       { path: "birth-registration", element: <BirthRegistration /> },
       { path: "BirthRegistration", element: <BirthRegistration /> },
       { path: "death-registration", element: <Deathregistration /> },
@@ -146,9 +160,13 @@ const router = createBrowserRouter([
       { path: "notice-board", element: <NoticeBoard /> },
       { path: "NoticeBoard", element: <NoticeBoard /> },
       { path: "notice-management", element: <NoticeManagement /> },
-      { path: "documents", element: <DocumentsList /> },
 
-      // Role Dashboards
+      // The old standalone /documents page is gone — its content now lives
+      // inside the citizen portal (CertificateHome -> MyDocuments). This
+      // redirect keeps any existing links and bookmarks working.
+      { path: "documents", element: <Navigate to="/citizen" replace /> },
+
+      // Role dashboards
       { path: "admin", element: <AdminHome /> },
       { path: "admin/dashboard", element: <AdminDashboard /> },
       { path: "admin/users", element: <AdminUsers /> },
@@ -171,5 +189,5 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         </LanguageProvider>
       </AuthProvider>
     </LoginProvider>
-  </React.StrictMode>
+  </React.StrictMode>,
 );

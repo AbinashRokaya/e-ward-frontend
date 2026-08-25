@@ -19,11 +19,15 @@ const getNavItems = (t = {}, language = "ne", isLogin = false, userRole = null) 
   const isNepali = language === "ne" || language === "np";
 
   const items = [
-    { to: "/", label: t.home || (isNepali ? "गृहपृष्ठ" : "Home"), icon: "🏠" },
+    // "/" is the login page now — the app's landing page for a signed-in
+    // user is "/home". Pointing this at "/" would bounce people out of
+    // their session flow back to a sign-in screen.
+    { to: "/home", label: t.home || (isNepali ? "गृहपृष्ठ" : "Home"), icon: "🏠" },
     { to: "/about", label: t.about || (isNepali ? "हाम्रो बारे" : "About Us"), icon: "📷" },
     { to: "/services", label: t.services || (isNepali ? "सेवाहरू" : "Services"), icon: "📋" },
     { to: "/NoticeBoard", label: t.notice || (isNepali ? "सूचना" : "Notices"), icon: "📢" },
-    { to: "/documents", label: t.documents || (isNepali ? "कागजातहरू" : "Documents"), icon: "📄" },
+    // The standalone "/documents" page is gone — its status tracker now
+    // lives inside the citizen portal, which this entry already points at.
     { to: "/citizen", label: t.reports || (isNepali ? "फारमको स्थिति" : "Form Status"), icon: "📝" },
     { to: "/contact", label: t.contact || (isNepali ? "सम्पर्क" : "Contact"), icon: "📞" },
   ];
@@ -68,13 +72,14 @@ function Header() {
     <header className="w-full bg-white shadow-sm font-sans border-b border-slate-200">
       <div className="bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3 sm:gap-4">
+          {/* Logo + title doubles as a home link, same as the nav item. */}
+          <NavLink to="/home" className="flex items-center gap-3 sm:gap-4 min-w-0">
             <img
               src={logo}
               alt="Nepal Government Logo"
               className="w-12 h-12 sm:w-16 sm:h-16 object-contain shrink-0"
             />
-            <div>
+            <div className="min-w-0">
               <h1 className="text-lg sm:text-xl font-extrabold text-blue-950 tracking-tight leading-tight">
                 {isNepali ? "ई-वडा व्यवस्थापन प्रणाली" : "E-Ward Management System"}
               </h1>
@@ -84,7 +89,7 @@ function Header() {
                   : "Local government, meaningful relationship with citizens"}
               </p>
             </div>
-          </div>
+          </NavLink>
 
           <div className="hidden sm:flex items-center gap-4 text-xs sm:text-sm text-slate-600 shrink-0">
             <div className="flex items-center gap-1 bg-slate-200/80 border border-slate-300 rounded-full p-1 shadow-sm">

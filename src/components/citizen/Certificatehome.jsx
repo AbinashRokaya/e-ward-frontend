@@ -6,6 +6,7 @@ import { colorsFor } from "../config/colorClasses";
 import API_URL from "../../api/api";
 import CertificateManager from "./ertificateManager";
 import { useLanguage } from "../../context/LanguageContext";
+import MyDocuments from "./MyDocuments";
 
 const CERT_LABELS_NP = {
   birth: {
@@ -120,6 +121,11 @@ function CertificateHome() {
           />
         ))}
       </div>
+
+      {/* Status of everything already submitted, below the "apply for
+          something new" grid — the natural reading order for a citizen.
+          Replaces the old standalone /documents page. */}
+      <MyDocuments />
     </main>
   );
 }
