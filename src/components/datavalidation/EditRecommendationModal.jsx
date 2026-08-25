@@ -151,13 +151,41 @@ function EditRecommendationModal({ recommendation, onClose, onSaved }) {
                 <RecommendationPreview
                   formData={formData}
                   documents={documents}
-                  showRejectSection={true}
-                  rejectText={rejectText}
-                  onRejectChange={handleRejectChange}
                 />
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Reject reason — RecommendationPreview doesn't render this itself
+            (it only reads formData/documents), so — same as
+            EditBirthRegistrationModal — the textarea lives directly in the
+            modal, between the preview and the action buttons. */}
+        <div className="no-print" style={{ padding: "10px 12px" }}>
+          <div style={{ fontSize: 12, marginBottom: 6, color: "#555" }}>
+            अस्वीकृतिको कारण (Reject Reason)&nbsp;:
+          </div>
+
+          {/* Always in editable mode for the reviewer */}
+          <textarea
+            rows={4}
+            value={rejectText}
+            onChange={(e) => handleRejectChange(e.target.value)}
+            style={{
+              width: "100%",
+              border: "1px solid #fc8181",
+              borderRadius: 6,
+              padding: "8px 10px",
+              fontSize: 12,
+              fontFamily:
+                "'Noto Sans Devanagari', 'Noto Sans', Arial, sans-serif",
+              resize: "vertical",
+              outline: "none",
+              boxSizing: "border-box",
+              background: "#fff",
+            }}
+            placeholder="अस्वीकृतिको कारण लेख्नुहोस् (Enter rejection reason)..."
+          />
         </div>
 
         {/* Footer */}

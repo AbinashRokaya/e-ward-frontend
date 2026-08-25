@@ -19,6 +19,11 @@ import NoticeDetailView from "../notice/NoticeDetailView";
 // src/components/citizen/MyTaxDashboard.jsx
 import MyTaxDashboard from "../citizen/MyTaxDashboard";
 
+// FIX — this was missing, which is why EditComponent was null for birth
+// and CertificateManager fell back to the "coming soon" toast even
+// though the component itself was already built.
+import EditBirthRegistrationCitizen from "../citizen/EditBirthRegistrationCitizen";
+
 // ─────────────────────────────────────────────────────────────────────────
 // Add a new certificate type by adding one object here — CertificateManager
 // and CertificateHome read everything from this list, so nothing else needs
@@ -57,10 +62,10 @@ export const CERTIFICATE_TYPES = {
     registrationBase: "/v1/birth-registration",
     certificateDownloadPath: (id) =>
       `/v1/birth-registration/${id}/certificate/download`,
-    getId: (r) => r.registration_id, // ← add this
+    getId: (r) => r.registration_id,
     FormComponent: BirthRegistration,
     PreviewComponent: Preview,
-    EditComponent: null,
+    EditComponent: EditBirthRegistrationCitizen, // ← was null — this is the fix
     getSearchValue: (r) => r.child?.child_first_name ?? "",
     searchLabel: "Search by child's name",
     statusField: "register_status",
@@ -80,7 +85,7 @@ export const CERTIFICATE_TYPES = {
     registrationBase: "/v1/death-registration",
     certificateDownloadPath: (id) =>
       `/v1/death-registration/${id}/certificate/download`,
-    getId: (r) => r.registration_id, // ← add this
+    getId: (r) => r.registration_id,
     FormComponent: DeathRegistration,
     PreviewComponent: DeathPreview,
     EditComponent: null,
@@ -103,7 +108,7 @@ export const CERTIFICATE_TYPES = {
     registrationBase: "/v1/migration-registration",
     certificateDownloadPath: (id) =>
       `/v1/migration-registration/${id}/certificate/download`,
-    getId: (r) => r.migration_id, // ← add this — different PK name
+    getId: (r) => r.migration_id,
     FormComponent: MigrationRegistration,
     PreviewComponent: MigrationPreview,
     EditComponent: null,
@@ -126,7 +131,7 @@ export const CERTIFICATE_TYPES = {
     registrationBase: "/v1/recommendation-letter",
     certificateDownloadPath: (id) =>
       `/v1/recommendation-letter/${id}/certificate/download`,
-    getId: (r) => r.letter_id, // ← different PK name, like migration_id
+    getId: (r) => r.letter_id,
     FormComponent: RecommendationLetter,
     PreviewComponent: RecommendationPreview,
     EditComponent: null,
