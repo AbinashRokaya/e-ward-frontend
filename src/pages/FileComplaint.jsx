@@ -247,10 +247,7 @@ function FileComplaint() {
     <form
       required
       className="min-h-screen bg-gray-100 p-8 flex flex-col max-w-4xl mx-auto gap-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (validate()) setShowPreview(true);
-      }}
+      onSubmit={(e) => e.preventDefault()}
     >
       <div>
         <div className="flex items-center gap-4 mb-6">
@@ -352,12 +349,36 @@ function FileComplaint() {
         </div>
       </div>
 
+      {/* Both actions live in the footer, same as BirthRegistration.jsx:
+          "Preview" validates then shows the printable preview screen;
+          "Submit" validates then posts straight to the API without
+          forcing the user through the preview first. */}
       <div className="flex justify-between items-center">
         <button
-          type="submit"
+          type="button"
+          onClick={() => {
+            if (validate()) setShowPreview(true);
+          }}
           className="bg-rose-100 hover:bg-rose-200 text-rose-700 font-medium px-6 py-2 rounded-md cursor-pointer transition-colors"
         >
           👁️ Preview Complaint
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            if (validate()) handleSubmit();
+          }}
+          disabled={submitting}
+          className="bg-rose-600 hover:bg-rose-700 disabled:bg-rose-300 text-white font-medium px-6 py-2 rounded-md cursor-pointer transition-colors flex items-center gap-2"
+        >
+          {submitting ? (
+            <>
+              <Spinner /> पेश गर्दै…
+            </>
+          ) : (
+            "Submit Complaint"
+          )}
         </button>
       </div>
     </form>
