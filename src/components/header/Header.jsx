@@ -50,12 +50,6 @@ const NAV_ITEMS = [
   },
 
   {
-    to: "/notice-management",
-    label: "Notice",
-    roles: null,
-  },
-
-  {
     to: "/",
     label: "Home",
     roles: null,
@@ -63,12 +57,7 @@ const NAV_ITEMS = [
 ];
 
 function Header() {
-  const {
-    isLogin,
-    userRole,
-    setisLogin,
-    setRole,
-  } = useContext(LoginContext);
+  const { isLogin, userRole, setisLogin, setRole } = useContext(LoginContext);
 
   const navigate = useNavigate();
 
@@ -96,13 +85,10 @@ function Header() {
        */
 
       try {
-        const response = await fetch(
-          `${API_URL}/v1/users/logout`,
-          {
-            method: "POST",
-            credentials: "include",
-          }
-        );
+        const response = await fetch(`${API_URL}/v1/users/logout`, {
+          method: "POST",
+          credentials: "include",
+        });
 
         /*
          * Don't prevent frontend logout if backend returns
@@ -110,21 +96,14 @@ function Header() {
          * a logout endpoint.
          */
         if (!response.ok && response.status !== 404) {
-          console.warn(
-            "Backend logout returned:",
-            response.status
-          );
+          console.warn("Backend logout returned:", response.status);
         }
       } catch (error) {
         /*
          * Even if backend logout fails, clear frontend state.
          */
-        console.warn(
-          "Backend logout request failed:",
-          error
-        );
+        console.warn("Backend logout request failed:", error);
       }
-
     } finally {
       // ========================================================
       // CLEAR FRONTEND AUTHENTICATION STATE
@@ -163,23 +142,17 @@ function Header() {
     <header className="bg-blue-900 shadow-sm">
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex items-center justify-between h-16">
-
           {/* ==================================================
               LOGO / HOME
           ================================================== */}
 
-          <NavLink
-            to="/"
-            className="flex items-center gap-3 shrink-0"
-          >
+          <NavLink to="/" className="flex items-center gap-3 shrink-0">
             <div className="leading-tight">
               <p className="text-sm font-semibold text-white">
                 वडा व्यवस्थापन प्रणाली
               </p>
 
-              <p className="text-xs text-blue-100">
-                Ward Management System
-              </p>
+              <p className="text-xs text-blue-100">Ward Management System</p>
             </div>
           </NavLink>
 
@@ -188,13 +161,8 @@ function Header() {
           ================================================== */}
 
           <nav className="hidden md:flex items-center gap-1">
-
             {visibleItems.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={navLinkClass}
-              >
+              <NavLink key={item.to} to={item.to} className={navLinkClass}>
                 {item.label}
               </NavLink>
             ))}
@@ -242,10 +210,7 @@ function Header() {
                 stroke="currentColor"
                 strokeWidth="2"
               >
-                <path
-                  d="M18 6L6 18M6 6l12 12"
-                  strokeLinecap="round"
-                />
+                <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" />
               </svg>
             ) : (
               <svg
@@ -256,10 +221,7 @@ function Header() {
                 stroke="currentColor"
                 strokeWidth="2"
               >
-                <path
-                  d="M3 6h18M3 12h18M3 18h18"
-                  strokeLinecap="round"
-                />
+                <path d="M3 6h18M3 12h18M3 18h18" strokeLinecap="round" />
               </svg>
             )}
           </button>
@@ -272,7 +234,6 @@ function Header() {
 
       {mobileOpen && (
         <nav className="md:hidden border-t border-white/10 px-4 py-3 flex flex-col gap-1">
-
           {visibleItems.map((item) => (
             <NavLink
               key={item.to}
