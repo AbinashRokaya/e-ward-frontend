@@ -5,6 +5,12 @@ import API_URL from "../api/api";
 // module exposes its own citizen-scoped list. Fetch all five in parallel and
 // merge. A module that fails (or has no records) contributes nothing rather
 // than breaking the page.
+//
+// FIELD NAMES: idKey/statusKey below are best guesses from the API docs and
+// have NOT been verified against real responses yet. The temporary
+// console.log in the fetch chain prints each record so the real key names
+// can be confirmed — check the browser console, fix these, then delete the
+// logging.
 const SOURCES = [
   {
     path: "/v1/citizen/birth/all",
@@ -62,14 +68,20 @@ function DocumentsList() {
           credentials: "include",
         })
           .then((res) => (res.ok ? res.json() : null))
-          .then((payload) =>
-            extractList(payload).map((record) => ({
-              id: record[source.idKey],
-              service_type: source.label,
-              status: record[source.statusKey],
-              created_at: record.created_at,
-            })),
-          )
+          .then((payload) => {
+            // TEMPORARY: logs the real response shape so the idKey/statusKey
+            // guesses above can be corrected. Remove once confirmed.
+            console.log(`RESPONSE ${source.path}:`, payload);
+            return extractList(payload).map((record) => {
+              console.log(`RECORD from ${source.path}:`, record);
+              return {
+                id: record[source.idKey],
+                service_type: source.label,
+                status: record[source.statusKey],
+                created_at: record.created_at,
+              };
+            });
+          })
           .catch((err) => {
             console.error(`Failed to load ${source.path}:`, err);
             return [];
@@ -126,14 +138,20 @@ function DocumentsList() {
                   {doc.service_type}
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
+                  {/* Show a dash when the date is missing rather than
+                      inventing "भर्खरै" (just now) for a record whose real
+                      date we simply failed to read. */}
                   आवेदन मिति:{" "}
                   {doc.created_at
                     ? new Date(doc.created_at).toLocaleDateString()
-                    : "भर्खरै"}
+                    : "—"}
                 </p>
               </div>
-              <span className="text-xs font-semibold px-3 py-1 bg-amber-100 text-amber-800 rounded-full border border-amber-200">
-                {doc.status?.replace(/_/g, " ") || "Pending"}
+              {/* Neutral styling and a dash when status is unknown — the
+                  previous amber "Pending" badge made every record look like
+                  a real pending application even when no status was read. */}
+              <span className="text-xs font-semibold px-3 py-1 bg-slate-100 text-slate-700 rounded-full border border-slate-200">
+                {doc.status ? doc.status.replace(/_/g, " ") : "—"}
               </span>
             </div>
           ))}
