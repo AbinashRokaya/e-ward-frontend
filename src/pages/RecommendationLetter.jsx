@@ -763,6 +763,15 @@ function RecommendationLetter({ wards = [] }) {
 
   // roman → Nepali transliteration buffer for the applicant's Nepali name
   const romanBuffer = useRef("");
+
+  // roman → Nepali transliteration buffer for the purpose textarea.
+  // Same pattern as romanBuffer above: we can't read the transliterated
+  // Nepali text back out of formData.purpose and keep transliterating from
+  // it (the mapping isn't reversible), so we keep the raw Roman keystrokes
+  // the citizen actually typed in this ref and re-transliterate the whole
+  // buffer on every keystroke, same as the Nepali name field does.
+  const purposeBuffer = useRef("");
+
   const passthroughKeys = [
     "Tab",
     "Enter",
@@ -811,6 +820,46 @@ function RecommendationLetter({ wards = [] }) {
     updateNepaliName(romanBuffer.current + pasted);
   };
 
+  // ── Purpose: same roman → Nepali transliteration as the name field ──────
+  // The textarea is multi-line, so unlike the single-line name input,
+  // Enter must NOT be passed through untouched (that's in
+  // passthroughKeys for the name field on purpose — a plain text input
+  // doesn't need real newlines). Here we intercept Enter ourselves and
+  // insert an actual "\n" into the buffer so multi-line purposes work.
+  const updatePurpose = (romanValue) => {
+    purposeBuffer.current = romanValue;
+    setFormData((p) => ({
+      ...p,
+      purpose: transliterateToNepali(romanValue),
+    }));
+    if (errors.purpose) setErrors((prev) => ({ ...prev, purpose: undefined }));
+  };
+
+  const handlePurposeKeyDown = (e) => {
+    if (e.ctrlKey || e.metaKey) return;
+    if (e.key === "Backspace") {
+      e.preventDefault();
+      updatePurpose(purposeBuffer.current.slice(0, -1));
+      return;
+    }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      updatePurpose(purposeBuffer.current + "\n");
+      return;
+    }
+    if (passthroughKeys.includes(e.key)) return;
+    if (e.key.length === 1) {
+      e.preventDefault();
+      updatePurpose(purposeBuffer.current + e.key);
+    }
+  };
+
+  const handlePurposePaste = (e) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData("text");
+    updatePurpose(purposeBuffer.current + pasted);
+  };
+
   function handleChange(e) {
     const { name, value } = e.target;
     setFormData((p) => ({ ...p, [name]: value }));
@@ -818,6 +867,10 @@ function RecommendationLetter({ wards = [] }) {
   }
 
   function handlePurposeSuggestionClick(text) {
+    // A suggestion chip is already finished Nepali text, not Roman
+    // keystrokes — reset the buffer so further typing starts fresh
+    // instead of re-transliterating on top of stale Roman input.
+    purposeBuffer.current = "";
     setFormData((p) => ({ ...p, purpose: text }));
     if (errors.purpose) setErrors((prev) => ({ ...prev, purpose: undefined }));
   }
@@ -925,6 +978,8 @@ function RecommendationLetter({ wards = [] }) {
       .then((data) => {
         console.log("Submission successful", data);
         toast.success("Recommendation letter request submitted successfully!");
+        purposeBuffer.current = "";
+        romanBuffer.current = "";
         setFormData(initial_data);
         setDocuments(emptyDocuments());
         setErrors({});
@@ -1166,9 +1221,11 @@ function RecommendationLetter({ wards = [] }) {
               <textarea
                 name="purpose"
                 value={formData.purpose}
-                onChange={handleChange}
+                onKeyDown={handlePurposeKeyDown}
+                onPaste={handlePurposePaste}
+                onChange={() => {}}
                 rows={4}
-                placeholder="यो सिफारिस पत्र किन आवश्यक छ, लेख्नुहोस्…"
+                placeholder="यहाँ English मा टाइप गर्नुहोस्, नेपालीमा देखिनेछ (Type in English here, it will show in Nepali)"
                 className={`${inputStyle} resize-vertical ${errors.purpose ? "border-red-400" : ""}`}
               />
               <FieldError msg={errors.purpose} />

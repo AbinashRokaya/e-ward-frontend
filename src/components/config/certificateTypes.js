@@ -23,6 +23,7 @@ import MyTaxDashboard from "../citizen/MyTaxDashboard";
 // and CertificateManager fell back to the "coming soon" toast even
 // though the component itself was already built.
 import EditBirthRegistrationCitizen from "../citizen/EditBirthRegistrationCitizen";
+import EditRecommendationLetterCitizen from "../citizen/EditRecommendationLetterCitizen";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Add a new certificate type by adding one object here — CertificateManager
@@ -134,7 +135,7 @@ export const CERTIFICATE_TYPES = {
     getId: (r) => r.letter_id,
     FormComponent: RecommendationLetter,
     PreviewComponent: RecommendationPreview,
-    EditComponent: null,
+    EditComponent: EditRecommendationLetterCitizen,
     getSearchValue: (r) => r.applicant_full_name_en ?? "",
     searchLabel: "Search by applicant's name",
     statusField: "register_status",
