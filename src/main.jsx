@@ -1,118 +1,201 @@
+import React from "react";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import {
+  createBrowserRouter,
+  RouterProvider,
+} from "react-router-dom";
+
 import "./index.css";
 
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
-import BirthRegistration from "./pages/BirthRegistration.jsx";
-import Login from "./pages/Login.jsx";
+// Context
+import { LoginProvider } from "./components/context/LoginContext.jsx";
+
+// Main app
+import App from "./App.jsx";
+
+// Pages
+import Home from "./pages/Home.jsx";
+import AuthPage from "./pages/Authpage.jsx";
 import Register from "./pages/Register.jsx";
 import Preview from "./components/Preview.jsx";
-import Dashboard from "./pages/admin/Dashboard.jsx";
-import Users from "./pages/admin/Users.jsx";
-import NoticeBoard from "./pages/NoticeBoard.jsx";
 
-import Admin from "./components/admin/Admin.jsx";
-import DataValidation from "./components/datavalidation/DataValidation.jsx";
-import Citizen from "./components/citizen/Citizen.jsx";
-import WardChairperson from "./components/ward_chairperson/WardChairperson.jsx";
-import WardSecretary from "./components/ward_secretary/WardSecretary.jsx";
-import Header from "./components/header/Header.jsx";
-import App from "./App.jsx";
-import { LoginProvider } from "./components/context/LoginContext.jsx";
-// import NoticeManagement from "./components/notice/Noticemanagement.jsx";
+import NoticeBoard from "./pages/NoticeBoard.jsx";
 import NoticeManagement from "./components/notice/NoticeManagement.jsx";
-import AuthPage from "./pages/Authpage.jsx";
-import Home from "./pages/Home.jsx";
-import Birth_certificate from "./components/Birth_certificate.jsx";
+
+import BirthRegistration from "./pages/BirthRegistration.jsx";
 import DeathRegistration from "./pages/Deathregistration.jsx";
-import CertificateHome from "./components/citizen/Certificatehome.jsx";
-import AdminHome from "./components/admin/Adminhome.jsx";
 import MigrationRegistration from "./pages/MigrationRegistration.jsx";
-import DataValidationHome from "./components/datavalidation/DataValidationHome.jsx";
-import WardChairpersonHome from "./components/ward_chairperson/WardChairpersonHome.jsx";
-import WardSecretaryHome from "./components/ward_secretary/WardSecretaryHome.jsx";
+
 import ComplaintBoard from "./pages/ComplaintBoard.jsx";
 import FileComplaint from "./pages/FileComplaint.jsx";
 import VerifyCertificate from "./pages/VerifyCertificate.jsx";
+
+// Citizen
+import CertificateHome from "./components/citizen/Certificatehome.jsx";
+
+// Admin
+import Dashboard from "./pages/admin/Dashboard.jsx";
+import Users from "./pages/admin/Users.jsx";
+import AdminHome from "./components/admin/Adminhome.jsx";
+
+// Other roles
+import DataValidationHome from "./components/datavalidation/DataValidationHome.jsx";
+import WardChairpersonHome from "./components/ward_chairperson/WardChairpersonHome.jsx";
+import WardSecretaryHome from "./components/ward_secretary/WardSecretaryHome.jsx";
+
+// Certificate
+import Birth_certificate from "./components/Birth_certificate.jsx";
+
+// ============================================================
+// ROUTER
+// ============================================================
 
 const router = createBrowserRouter([
   {
     path: "/",
     element: <App />,
+
     children: [
+      // ========================================================
+      // PUBLIC
+      // ========================================================
+
       {
         path: "/",
         element: <Home />,
       },
+
       {
         path: "/login",
         element: <AuthPage />,
       },
+
       {
         path: "/register",
         element: <Register />,
       },
+
       {
         path: "/preview",
         element: <Preview />,
       },
+
       {
         path: "/notice-board",
         element: <NoticeBoard />,
       },
-      // Admin Routes
-      {
-        path: "/admin/dashboard",
-        element: <Dashboard />,
-      },
-      {
-        path: "/admin/users",
-        element: <Users />,
-      },
+
+      // ========================================================
+      // ADMIN
+      // ========================================================
+
       {
         path: "/admin",
         element: <AdminHome />,
       },
+
       {
-        path: "/validation",
-        element: <DataValidationHome />,
+        path: "/admin/dashboard",
+        element: <Dashboard />,
       },
+
+      {
+        path: "/admin/users",
+        element: <Users />,
+      },
+
+      // ========================================================
+      // CITIZEN
+      // ========================================================
+
       {
         path: "/citizen",
         element: <CertificateHome />,
       },
+
+      // ========================================================
+      // DATA VALIDATION
+      // ========================================================
+
+      {
+        path: "/validation",
+        element: <DataValidationHome />,
+      },
+
+      // ========================================================
+      // WARD CHAIRPERSON
+      // ========================================================
+
       {
         path: "/wardchairperson",
         element: <WardChairpersonHome />,
       },
+
+      // ========================================================
+      // WARD SECRETARY
+      // ========================================================
+
       {
         path: "/wardsecretary",
         element: <WardSecretaryHome />,
       },
+
+      // ========================================================
+      // NOTICE MANAGEMENT
+      // ========================================================
+
       {
         path: "/notice-management",
         element: <NoticeManagement />,
       },
+
+      // ========================================================
+      // CERTIFICATES
+      // ========================================================
+
       {
         path: "/certi",
         element: <Birth_certificate />,
       },
+
+      // ========================================================
+      // REGISTRATION
+      // ========================================================
+
+      {
+        path: "/birth",
+        element: <BirthRegistration />,
+      },
+
       {
         path: "/death",
         element: <DeathRegistration />,
       },
+
       {
         path: "/migration",
         element: <MigrationRegistration />,
       },
+
+      // ========================================================
+      // COMPLAINT
+      // ========================================================
+
       {
         path: "/complaint",
         element: <ComplaintBoard />,
       },
+
       {
         path: "/complaint-file",
         element: <FileComplaint />,
       },
+
+      // ========================================================
+      // VERIFY
+      // ========================================================
+
       {
         path: "/verify/:id",
         element: <VerifyCertificate />,
@@ -121,10 +204,14 @@ const router = createBrowserRouter([
   },
 ]);
 
+// ============================================================
+// ROOT
+// ============================================================
+
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <LoginProvider>
       <RouterProvider router={router} />
     </LoginProvider>
-  </StrictMode>,
+  </StrictMode>
 );
