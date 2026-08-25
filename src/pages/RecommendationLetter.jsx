@@ -16,7 +16,10 @@ const LETTER_TYPES = [
     value: "INCOME_STATEMENT",
     label: "आर्थिक अवस्था प्रमाणित (Income Statement)",
   },
-  { value: "RELATIONSHIP_PROOF", label: "नाता प्रमाणित (Relationship Proof)" },
+  {
+    value: "RELATIONSHIP_PROOF",
+    label: "नाता प्रमाणित (Relationship Proof)",
+  },
   {
     value: "LAND_OWNERSHIP_PROOF",
     label: "जग्गा स्वामित्व प्रमाणित (Land Ownership Proof)",
@@ -24,7 +27,6 @@ const LETTER_TYPES = [
   { value: "OTHER", label: "अन्य (Other)" },
 ];
 
-// Nepali display labels for the ward_type enum coming back from the backend.
 const MUNICIPALITY_TYPE_LABELS = {
   METROPOLITAN_CITY: "महानगरपालिका",
   SUB_METROPOLITAN_CITY: "उपमहानगरपालिका",
@@ -32,19 +34,8 @@ const MUNICIPALITY_TYPE_LABELS = {
   RURAL_MUNICIPALITY: "गाउँपालिका",
 };
 
-// Letter types where the applicant may legitimately need to submit to a
-// ward OTHER than their own registered ward (e.g. proving they currently
-// live somewhere different from their citizenship-registered address).
-// Every other letter type is locked to the account's own ward — both here
-// (for display) and, authoritatively, on the backend
-// (LETTER_TYPES_ALLOWING_DIFFERENT_WARD in recommendation_router.py,
-// kept in sync with this set). The backend derives and re-verifies the
-// address itself regardless of what this set contains here — this only
-// controls what the UI offers to override.
 const LETTER_TYPES_ALLOWING_DIFFERENT_WARD = new Set(["RESIDENCE_PROOF"]);
 
-// Which supporting document (beyond citizenship, which every letter type
-// needs) is expected for each letter_type, and whether it's mandatory.
 const DOCUMENT_REQUIREMENTS = {
   RESIDENCE_PROOF: {
     supportingRequired: true,
@@ -77,8 +68,6 @@ const DOCUMENT_REQUIREMENTS = {
   },
 };
 
-// Fallback for any letter_type not in the map above — reading
-// `.supportingLabel` off undefined would crash the render.
 const DEFAULT_DOCUMENT_REQUIREMENT = {
   supportingRequired: false,
   supportingLabel: "सहायक कागजात (Supporting Document, if any)",
@@ -88,9 +77,6 @@ function requirementFor(letterType) {
   return DOCUMENT_REQUIREMENTS[letterType] || DEFAULT_DOCUMENT_REQUIREMENT;
 }
 
-// Most citizens don't know the exact bureaucratic phrasing ward offices
-// expect in the "purpose" field, so we suggest the most common real-world
-// reasons each letter type is actually requested for in Nepal.
 const PURPOSE_SUGGESTIONS = {
   RESIDENCE_PROOF: [
     "बैंक खाता खोल्नको लागि",
@@ -171,62 +157,81 @@ const MAX_FILE_BYTES = 5 * 1024 * 1024;
 
 function validate(form, documents) {
   const e = {};
-  if (!form.letter_type) e.letter_type = "Please select a letter type.";
-  if (form.letter_type === "OTHER" && !form.letter_type_other.trim())
+
+  if (!form.letter_type) {
+    e.letter_type = "Please select a letter type.";
+  }
+
+  if (form.letter_type === "OTHER" && !form.letter_type_other.trim()) {
     e.letter_type_other = "Please specify the letter type.";
+  }
 
-  if (!form.applicant_full_name_en.trim())
+  if (!form.applicant_full_name_en.trim()) {
     e.applicant_full_name_en = "Full name (English) is required.";
-  else if (!englishRegex.test(form.applicant_full_name_en))
+  } else if (!englishRegex.test(form.applicant_full_name_en)) {
     e.applicant_full_name_en = "Please enter English letters only.";
+  }
 
-  if (!form.applicant_full_name_np.trim())
+  if (!form.applicant_full_name_np.trim()) {
     e.applicant_full_name_np = "Full name (Nepali) is required.";
+  }
 
-  if (!form.applicant_citizenship_no.trim())
+  if (!form.applicant_citizenship_no.trim()) {
     e.applicant_citizenship_no = "Citizenship number is required.";
-  else if (!CITIZENSHIP_REGEX.test(form.applicant_citizenship_no))
+  } else if (!CITIZENSHIP_REGEX.test(form.applicant_citizenship_no)) {
     e.applicant_citizenship_no =
       "Use digits and dashes only (e.g. 12-34-56789).";
+  }
 
   if (
     form.applicant_contact_no &&
     !/^9[678]\d{8}$/.test(form.applicant_contact_no)
-  )
+  ) {
     e.applicant_contact_no = "Enter a valid Nepali mobile number.";
+  }
 
-  // When the citizen has unlocked the manual address picker, an incomplete
-  // selection leaves register_ward_id empty. Telling them to reload the page
-  // would wipe their work and fix nothing — the real fix is finishing the
-  // picker, so the message depends on which situation they're actually in.
   if (!form.register_ward_id) {
     const usingPicker =
       LETTER_TYPES_ALLOWING_DIFFERENT_WARD.has(form.letter_type) &&
       !form.address.applicant_ward_number;
+
     e["address"] = usingPicker
       ? "Please finish selecting the ward for the address you're applying from."
       : "We couldn't determine your ward. Please reload the page.";
   }
 
-  if (!form.purpose.trim()) e.purpose = "Purpose is required.";
-  else if (form.purpose.trim().length < 10)
+  if (!form.purpose.trim()) {
+    e.purpose = "Purpose is required.";
+  } else if (form.purpose.trim().length < 10) {
     e.purpose = "Please describe the purpose in a bit more detail.";
+  }
 
-  if (!documents.applicant_citizenship.front.file)
-    e["documents.citizenship_front"] = "Upload the front side of citizenship.";
-  if (!documents.applicant_citizenship.back.file)
-    e["documents.citizenship_back"] = "Upload the back side of citizenship.";
+  if (!documents.applicant_citizenship.front.file) {
+    e["documents.citizenship_front"] =
+      "Upload the front side of citizenship.";
+  }
+
+  if (!documents.applicant_citizenship.back.file) {
+    e["documents.citizenship_back"] =
+      "Upload the back side of citizenship.";
+  }
 
   const requirement = requirementFor(form.letter_type);
-  if (requirement.supportingRequired && !documents.supporting_document.file)
+
+  if (
+    requirement.supportingRequired &&
+    !documents.supporting_document.file
+  ) {
     e["documents.supporting_document"] =
       `Please upload: ${requirement.supportingLabel}`;
+  }
 
   return e;
 }
 
 function FieldError({ msg }) {
   if (!msg) return null;
+
   return <p className="text-red-500 text-xs mt-1">{msg}</p>;
 }
 
@@ -256,6 +261,7 @@ function UploadTile({ label, previewUrl, isPdf, onFileSelected }) {
       <span className="text-xs font-medium text-gray-600 text-center">
         {label}
       </span>
+
       <div className="w-20 h-20 rounded-md border border-dashed border-gray-300 flex items-center justify-center bg-gray-50 overflow-hidden">
         {previewUrl ? (
           isPdf ? (
@@ -271,15 +277,21 @@ function UploadTile({ label, previewUrl, isPdf, onFileSelected }) {
           <span className="text-[10px] text-gray-400">छैन</span>
         )}
       </div>
+
       <label className="text-xs px-3 py-1.5 rounded-md cursor-pointer bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors">
         {previewUrl ? "बदल्नुहोस्" : "अपलोड गर्नुहोस्"}
+
         <input
           type="file"
           accept="image/png,image/jpeg,image/webp,application/pdf"
           className="hidden"
           onChange={(e) => {
             const file = e.target.files?.[0];
-            if (file) onFileSelected(file);
+
+            if (file) {
+              onFileSelected(file);
+            }
+
             e.target.value = "";
           }}
         />
@@ -288,17 +300,6 @@ function UploadTile({ label, previewUrl, isPdf, onFileSelected }) {
   );
 }
 
-// ── Applicant address section ───────────────────────────────────────────────
-// The address is NOT a form the citizen fills in anymore. By default it's
-// a plain read-only summary of whatever GET /v1/recommendation-letter/
-// my-address returned — the backend resolves this from the logged-in
-// account's own ward.
-//
-// The one exception is RESIDENCE_PROOF, where an applicant may genuinely
-// need a ward OTHER than their own to certify where they currently live.
-// For that case only, a checkbox unlocks a manual cascading picker. Nothing
-// typed here is trusted — the backend re-derives and re-verifies the address
-// independently when the form is submitted.
 function ApplicantAddressSection({
   wards,
   formData,
@@ -320,10 +321,14 @@ function ApplicantAddressSection({
 
   const districts = useMemo(() => {
     if (!formData.address.applicant_province) return [];
+
     return [
       ...new Set(
         wards
-          .filter((w) => w.ward_province === formData.address.applicant_province)
+          .filter(
+            (w) =>
+              w.ward_province === formData.address.applicant_province,
+          )
           .map((w) => w.ward_district),
       ),
     ].sort();
@@ -333,8 +338,10 @@ function ApplicantAddressSection({
     if (
       !formData.address.applicant_province ||
       !formData.address.applicant_district
-    )
+    ) {
       return [];
+    }
+
     return [
       ...new Set(
         wards
@@ -357,8 +364,9 @@ function ApplicantAddressSection({
       !formData.address.applicant_province ||
       !formData.address.applicant_district ||
       !formData.address.applicant_municipality
-    )
+    ) {
       return [];
+    }
 
     return wards
       .filter(
@@ -380,7 +388,11 @@ function ApplicantAddressSection({
 
   const handleProvinceChange = (e) => {
     const value = e.target.value;
-    const province = wards.find((w) => w.ward_province === value);
+
+    const province = wards.find(
+      (w) => w.ward_province === value,
+    );
+
     setFormData((prev) => ({
       ...prev,
       register_ward_id: "",
@@ -390,7 +402,8 @@ function ApplicantAddressSection({
         applicant_district: "",
         applicant_municipality: "",
         applicant_ward_number: "",
-        ward_nepali_province: province?.ward_nepali_province || "",
+        ward_nepali_province:
+          province?.ward_nepali_province || "",
         ward_nepali_district: "",
         ward_nepali_municipality: "",
         ward_nepali_name: "",
@@ -401,11 +414,14 @@ function ApplicantAddressSection({
 
   const handleDistrictChange = (e) => {
     const value = e.target.value;
+
     const district = wards.find(
       (w) =>
-        w.ward_province === formData.address.applicant_province &&
+        w.ward_province ===
+          formData.address.applicant_province &&
         w.ward_district === value,
     );
+
     setFormData((prev) => ({
       ...prev,
       register_ward_id: "",
@@ -414,7 +430,8 @@ function ApplicantAddressSection({
         applicant_district: value,
         applicant_municipality: "",
         applicant_ward_number: "",
-        ward_nepali_district: district?.ward_nepali_district || "",
+        ward_nepali_district:
+          district?.ward_nepali_district || "",
         ward_nepali_municipality: "",
         ward_nepali_name: "",
         ward_type: "",
@@ -424,12 +441,16 @@ function ApplicantAddressSection({
 
   const handleMunicipalityChange = (e) => {
     const value = e.target.value;
+
     const municipality = wards.find(
       (w) =>
-        w.ward_province === formData.address.applicant_province &&
-        w.ward_district === formData.address.applicant_district &&
+        w.ward_province ===
+          formData.address.applicant_province &&
+        w.ward_district ===
+          formData.address.applicant_district &&
         w.ward_municipality === value,
     );
+
     setFormData((prev) => ({
       ...prev,
       register_ward_id: "",
@@ -437,7 +458,8 @@ function ApplicantAddressSection({
         ...prev.address,
         applicant_municipality: value,
         applicant_ward_number: "",
-        ward_nepali_municipality: municipality?.ward_nepali_municipality || "",
+        ward_nepali_municipality:
+          municipality?.ward_nepali_municipality || "",
         ward_nepali_name: "",
         ward_type: municipality?.ward_type || "",
       },
@@ -446,8 +468,13 @@ function ApplicantAddressSection({
 
   const handleWardChange = (e) => {
     const wardNo = Number(e.target.value);
-    const ward = filteredWards.find((w) => Number(w.ward_no) === wardNo);
+
+    const ward = filteredWards.find(
+      (w) => Number(w.ward_no) === wardNo,
+    );
+
     if (!ward) return;
+
     setFormData((prev) => ({
       ...prev,
       register_ward_id: ward.ward_id,
@@ -457,7 +484,8 @@ function ApplicantAddressSection({
         ward_nepali_name: ward.ward_nepali_name,
         ward_nepali_province: ward.ward_nepali_province,
         ward_nepali_district: ward.ward_nepali_district,
-        ward_nepali_municipality: ward.ward_nepali_municipality,
+        ward_nepali_municipality:
+          ward.ward_nepali_municipality,
         ward_type: ward.ward_type,
       },
     }));
@@ -465,9 +493,13 @@ function ApplicantAddressSection({
 
   const handleToleChange = (e) => {
     const value = e.target.value;
+
     setFormData((prev) => ({
       ...prev,
-      address: { ...prev.address, applicant_tole: value },
+      address: {
+        ...prev.address,
+        applicant_tole: value,
+      },
     }));
   };
 
@@ -492,24 +524,31 @@ function ApplicantAddressSection({
       {!addressLoading && !addressError && !editable && (
         <>
           <p className="text-xs text-gray-500 mb-4">
-            यो ठेगाना तपाईंको दर्ता खातामा आधारित छ। (This address comes from
-            your registered account.)
+            यो ठेगाना तपाईंको दर्ता खातामा आधारित छ। (This
+            address comes from your registered account.)
           </p>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
             <div>
-              <span className="block text-gray-500">प्रदेश (Province)</span>
+              <span className="block text-gray-500">
+                प्रदेश (Province)
+              </span>
               <span className="font-medium">
                 {myAddress?.ward_nepali_province} (
                 {myAddress?.applicant_province})
               </span>
             </div>
+
             <div>
-              <span className="block text-gray-500">जिल्ला (District)</span>
+              <span className="block text-gray-500">
+                जिल्ला (District)
+              </span>
               <span className="font-medium">
                 {myAddress?.ward_nepali_district} (
                 {myAddress?.applicant_district})
               </span>
             </div>
+
             <div>
               <span className="block text-gray-500">
                 नगरपालिका (Municipality)
@@ -519,25 +558,33 @@ function ApplicantAddressSection({
                 {myAddress?.applicant_municipality})
               </span>
             </div>
+
             <div>
-              <span className="block text-gray-500">वडा नं. (Ward No.)</span>
+              <span className="block text-gray-500">
+                वडा नं. (Ward No.)
+              </span>
               <span className="font-medium">
                 {myAddress?.ward_nepali_name} — Ward{" "}
                 {myAddress?.applicant_ward_number}
               </span>
             </div>
+
             <div>
               <span className="block text-gray-500">
                 स्थानीय तहको प्रकार (Local Unit Type)
               </span>
+
               <span className="font-medium">
-                {MUNICIPALITY_TYPE_LABELS[myAddress?.ward_type] || "—"}
+                {MUNICIPALITY_TYPE_LABELS[
+                  myAddress?.ward_type
+                ] || "—"}
               </span>
             </div>
           </div>
 
           <div className="mt-4">
             <label>टोल / सडक (Tole / Street)</label>
+
             <input
               type="text"
               value={formData.address.applicant_tole}
@@ -554,13 +601,17 @@ function ApplicantAddressSection({
           <input
             type="checkbox"
             checked={overrideChecked}
-            onChange={(e) => onOverrideToggle(e.target.checked)}
+            onChange={(e) =>
+              onOverrideToggle(e.target.checked)
+            }
             className="mt-0.5"
           />
+
           <span>
-            म हाल फरक ठेगानामा बस्छु र सोही वडाबाट सिफारिस चाहन्छु (I currently
-            live at a different address and want this recommendation from that
-            ward instead)
+            म हाल फरक ठेगानामा बस्छु र सोही वडाबाट सिफारिस
+            चाहन्छु (I currently live at a different address
+            and want this recommendation from that ward
+            instead)
           </span>
         </label>
       )}
@@ -569,83 +620,124 @@ function ApplicantAddressSection({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label>प्रदेश (Province)</label>
+
             <select
               value={formData.address.applicant_province}
               onChange={handleProvinceChange}
-              className={`${inputStyle} bg-white ${errors["address.applicant_province"] ? "border-red-400" : ""}`}
+              className={`${inputStyle} bg-white ${
+                errors["address.applicant_province"]
+                  ? "border-red-400"
+                  : ""
+              }`}
             >
               <option value="">
                 -- प्रदेश छान्नुहोस् (Select Province) --
               </option>
+
               {provinces.map((p) => (
                 <option key={p} value={p}>
                   {p}
                 </option>
               ))}
             </select>
-            <FieldError msg={errors["address.applicant_province"]} />
+
+            <FieldError
+              msg={errors["address.applicant_province"]}
+            />
           </div>
 
           <div>
             <label>जिल्ला (District)</label>
+
             <select
               value={formData.address.applicant_district}
               onChange={handleDistrictChange}
               disabled={!formData.address.applicant_province}
-              className={`${inputStyle} bg-white ${errors["address.applicant_district"] ? "border-red-400" : ""}`}
+              className={`${inputStyle} bg-white ${
+                errors["address.applicant_district"]
+                  ? "border-red-400"
+                  : ""
+              }`}
             >
               <option value="">
                 -- जिल्ला छान्नुहोस् (Select District) --
               </option>
+
               {districts.map((d) => (
                 <option key={d} value={d}>
                   {d}
                 </option>
               ))}
             </select>
-            <FieldError msg={errors["address.applicant_district"]} />
+
+            <FieldError
+              msg={errors["address.applicant_district"]}
+            />
           </div>
 
           <div>
-            <label>नगरपालिका / गाउँपालिका (Municipality)</label>
+            <label>
+              नगरपालिका / गाउँपालिका (Municipality)
+            </label>
+
             <select
               value={formData.address.applicant_municipality}
               onChange={handleMunicipalityChange}
               disabled={!formData.address.applicant_district}
-              className={`${inputStyle} bg-white ${errors["address.applicant_municipality"] ? "border-red-400" : ""}`}
+              className={`${inputStyle} bg-white ${
+                errors["address.applicant_municipality"]
+                  ? "border-red-400"
+                  : ""
+              }`}
             >
               <option value="">
                 -- नगरपालिका छान्नुहोस् (Select Municipality) --
               </option>
+
               {municipalities.map((m) => (
                 <option key={m} value={m}>
                   {m}
                 </option>
               ))}
             </select>
-            <FieldError msg={errors["address.applicant_municipality"]} />
+
+            <FieldError
+              msg={errors["address.applicant_municipality"]}
+            />
           </div>
 
           <div>
             <label>वडा नं. (Ward No.)</label>
+
             <select
               value={formData.address.applicant_ward_number}
               onChange={handleWardChange}
               disabled={!formData.address.applicant_municipality}
-              className={`${inputStyle} bg-white ${errors["address.applicant_ward_number"] ? "border-red-400" : ""}`}
+              className={`${inputStyle} bg-white ${
+                errors["address.applicant_ward_number"]
+                  ? "border-red-400"
+                  : ""
+              }`}
             >
-              <option value="">-- वडा छान्नुहोस् (Select Ward) --</option>
+              <option value="">
+                -- वडा छान्नुहोस् (Select Ward) --
+              </option>
+
               {filteredWards.map((w) => (
                 <option key={w.ward_id} value={w.ward_no}>
                   Ward {w.ward_no} — {w.ward_name}
                 </option>
               ))}
             </select>
-            <FieldError msg={errors["address.applicant_ward_number"]} />
+
+            <FieldError
+              msg={errors["address.applicant_ward_number"]}
+            />
           </div>
 
           <div className="md:col-span-2">
             <label>टोल / सडक (Tole / Street)</label>
+
             <input
               type="text"
               value={formData.address.applicant_tole}
@@ -669,18 +761,16 @@ function RecommendationLetter({ wards = [] }) {
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
 
-  // The address as returned by GET /v1/recommendation-letter/my-address.
   const [myAddress, setMyAddress] = useState(null);
   const [addressLoading, setAddressLoading] = useState(true);
   const [addressError, setAddressError] = useState("");
 
-  // Whether the citizen has ticked "I live at a different address" for a
-  // letter type that permits it (currently only RESIDENCE_PROOF).
   const [addressOverride, setAddressOverride] = useState(false);
 
-  const allowOverride = LETTER_TYPES_ALLOWING_DIFFERENT_WARD.has(
-    formData.letter_type,
-  );
+  const allowOverride =
+    LETTER_TYPES_ALLOWING_DIFFERENT_WARD.has(
+      formData.letter_type,
+    );
 
   function applyMyAddressToForm(addr) {
     setFormData((prev) => ({
@@ -694,7 +784,8 @@ function RecommendationLetter({ wards = [] }) {
         applicant_ward_number: addr.applicant_ward_number,
         ward_nepali_province: addr.ward_nepali_province,
         ward_nepali_district: addr.ward_nepali_district,
-        ward_nepali_municipality: addr.ward_nepali_municipality,
+        ward_nepali_municipality:
+          addr.ward_nepali_municipality,
         ward_nepali_name: addr.ward_nepali_name,
         ward_type: addr.ward_type,
       },
@@ -712,64 +803,76 @@ function RecommendationLetter({ wards = [] }) {
     }));
   }
 
-  // Fetch the citizen's own address straight from the backend on mount. The
-  // backend already knows who the logged-in user is (same session cookie
-  // every other request uses) and resolves the address itself.
   useEffect(() => {
     let cancelled = false;
+
     setAddressLoading(true);
     setAddressError("");
 
-    fetch(`${API_URL}/v1/recommendation-letter/my-address`, {
-      method: "GET",
-      credentials: "include",
-    })
+    fetch(
+      `${API_URL}/v1/recommendation-letter/my-address`,
+      {
+        method: "GET",
+        credentials: "include",
+      },
+    )
       .then((res) =>
         res.json().then((data) => {
           if (!res.ok) throw data;
+
           return data;
         }),
       )
       .then((data) => {
         if (cancelled) return;
+
         setMyAddress(data.data);
         applyMyAddressToForm(data.data);
       })
       .catch((err) => {
         if (cancelled) return;
-        console.error("Failed to load address:", err);
-        // Shown inline in the address section AND as a toast — without the
-        // address the form can't be submitted at all, so it shouldn't be
-        // possible to miss while scrolled elsewhere.
+
+        console.error(
+          "Failed to load address:",
+          err,
+        );
+
         const message =
           typeof err?.detail === "string"
             ? err.detail
             : "तपाईंको ठेगाना लोड गर्न सकिएन। (Could not load your address.)";
+
         setAddressError(message);
         notify.error(message);
       })
       .finally(() => {
-        if (!cancelled) setAddressLoading(false);
+        if (!cancelled) {
+          setAddressLoading(false);
+        }
       });
 
     return () => {
       cancelled = true;
     };
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // If the citizen switches letter type away from one that allows an
-  // override, snap the address straight back to their own account address.
   useEffect(() => {
     if (!allowOverride) {
       setAddressOverride(false);
-      if (myAddress) applyMyAddressToForm(myAddress);
+
+      if (myAddress) {
+        applyMyAddressToForm(myAddress);
+      }
     }
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.letter_type]);
 
   function handleAddressOverrideToggle(checked) {
     setAddressOverride(checked);
+
     if (!checked && myAddress) {
       applyMyAddressToForm(myAddress);
     } else if (checked) {
@@ -777,8 +880,16 @@ function RecommendationLetter({ wards = [] }) {
     }
   }
 
-  // roman → Nepali transliteration buffer for the applicant's Nepali name
+  // ============================================================
+  // NEPALI TRANSLITERATION
+  // ============================================================
+
+  // Roman text buffer for applicant's Nepali name
   const romanBuffer = useRef("");
+
+  // Roman text buffer for purpose
+  const purposeRomanBuffer = useRef("");
+
   const passthroughKeys = [
     "Tab",
     "Enter",
@@ -797,67 +908,209 @@ function RecommendationLetter({ wards = [] }) {
     "Escape",
   ];
 
+  // ============================================================
+  // APPLICANT NAME TRANSLITERATION
+  // ============================================================
+
   const updateNepaliName = (romanValue) => {
     romanBuffer.current = romanValue;
+
     setFormData((p) => ({
       ...p,
-      applicant_full_name_np: transliterateToNepali(romanValue),
+      applicant_full_name_np:
+        transliterateToNepali(romanValue),
     }));
-    if (errors.applicant_full_name_np)
-      setErrors((prev) => ({ ...prev, applicant_full_name_np: undefined }));
+
+    if (errors.applicant_full_name_np) {
+      setErrors((prev) => ({
+        ...prev,
+        applicant_full_name_np: undefined,
+      }));
+    }
   };
 
   const handleNepaliNameKeyDown = (e) => {
     if (e.ctrlKey || e.metaKey) return;
+
     if (e.key === "Backspace") {
       e.preventDefault();
-      updateNepaliName(romanBuffer.current.slice(0, -1));
+
+      updateNepaliName(
+        romanBuffer.current.slice(0, -1),
+      );
+
       return;
     }
+
     if (passthroughKeys.includes(e.key)) return;
+
     if (e.key.length === 1) {
       e.preventDefault();
-      updateNepaliName(romanBuffer.current + e.key);
+
+      updateNepaliName(
+        romanBuffer.current + e.key,
+      );
     }
   };
 
   const handleNepaliNamePaste = (e) => {
     e.preventDefault();
-    const pasted = e.clipboardData.getData("text");
-    updateNepaliName(romanBuffer.current + pasted);
+
+    const pasted =
+      e.clipboardData.getData("text");
+
+    updateNepaliName(
+      romanBuffer.current + pasted,
+    );
   };
+
+  // ============================================================
+  // PURPOSE TRANSLITERATION
+  // ============================================================
+
+  const updatePurpose = (romanValue) => {
+    purposeRomanBuffer.current = romanValue;
+
+    setFormData((p) => ({
+      ...p,
+      purpose: transliterateToNepali(romanValue),
+    }));
+
+    if (errors.purpose) {
+      setErrors((prev) => ({
+        ...prev,
+        purpose: undefined,
+      }));
+    }
+  };
+
+  const handlePurposeKeyDown = (e) => {
+    if (e.ctrlKey || e.metaKey) return;
+
+    if (e.key === "Backspace") {
+      e.preventDefault();
+
+      updatePurpose(
+        purposeRomanBuffer.current.slice(0, -1),
+      );
+
+      return;
+    }
+
+    if (passthroughKeys.includes(e.key)) return;
+
+    if (e.key.length === 1) {
+      e.preventDefault();
+
+      updatePurpose(
+        purposeRomanBuffer.current + e.key,
+      );
+    }
+  };
+
+  const handlePurposePaste = (e) => {
+    e.preventDefault();
+
+    const pasted =
+      e.clipboardData.getData("text");
+
+    updatePurpose(
+      purposeRomanBuffer.current + pasted,
+    );
+  };
+
+  // ============================================================
+  // NORMAL INPUT HANDLERS
+  // ============================================================
 
   function handleChange(e) {
     const { name, value } = e.target;
-    setFormData((p) => ({ ...p, [name]: value }));
-    if (errors[name]) setErrors((prev) => ({ ...prev, [name]: undefined }));
+
+    setFormData((p) => ({
+      ...p,
+      [name]: value,
+    }));
+
+    if (errors[name]) {
+      setErrors((prev) => ({
+        ...prev,
+        [name]: undefined,
+      }));
+    }
+
+    // When letter type changes, reset purpose transliteration
+    // buffer because purpose belongs to the selected letter type.
+    if (name === "letter_type") {
+      purposeRomanBuffer.current = "";
+
+      setFormData((p) => ({
+        ...p,
+        letter_type: value,
+        purpose: "",
+      }));
+    }
   }
 
   function handlePurposeSuggestionClick(text) {
-    setFormData((p) => ({ ...p, purpose: text }));
-    if (errors.purpose) setErrors((prev) => ({ ...prev, purpose: undefined }));
+    setFormData((p) => ({
+      ...p,
+      purpose: text,
+    }));
+
+    // Suggestion is already Nepali.
+    // Clear Roman buffer so new typing starts fresh.
+    purposeRomanBuffer.current = "";
+
+    if (errors.purpose) {
+      setErrors((prev) => ({
+        ...prev,
+        purpose: undefined,
+      }));
+    }
   }
 
   function handleContactChange(e) {
     const value = e.target.value;
+
     if (value && isNaN(Number(value))) return;
     if (value.length > 10) return;
-    setFormData((p) => ({ ...p, applicant_contact_no: value }));
-    if (errors.applicant_contact_no)
-      setErrors((prev) => ({ ...prev, applicant_contact_no: undefined }));
+
+    setFormData((p) => ({
+      ...p,
+      applicant_contact_no: value,
+    }));
+
+    if (errors.applicant_contact_no) {
+      setErrors((prev) => ({
+        ...prev,
+        applicant_contact_no: undefined,
+      }));
+    }
   }
 
   function handleCitizenshipChange(e) {
     const value = e.target.value;
+
     if (!/^[0-9-]*$/.test(value)) return;
-    setFormData((p) => ({ ...p, applicant_citizenship_no: value }));
-    if (errors.applicant_citizenship_no)
-      setErrors((prev) => ({ ...prev, applicant_citizenship_no: undefined }));
+
+    setFormData((p) => ({
+      ...p,
+      applicant_citizenship_no: value,
+    }));
+
+    if (errors.applicant_citizenship_no) {
+      setErrors((prev) => ({
+        ...prev,
+        applicant_citizenship_no: undefined,
+      }));
+    }
   }
 
+  // ============================================================
+  // DOCUMENT HANDLING
+  // ============================================================
+
   function handleDocumentSelect(key, file, side) {
-    // Reject oversized files at selection time rather than letting the whole
-    // submission fail after everything else is filled in.
     if (file.size > MAX_FILE_BYTES) {
       notify.error("File must be under 5MB.");
       return;
@@ -865,50 +1118,105 @@ function RecommendationLetter({ wards = [] }) {
 
     setDocuments((prev) => {
       const previewUrl =
-        file.type === "application/pdf" ? "pdf" : URL.createObjectURL(file);
+        file.type === "application/pdf"
+          ? "pdf"
+          : URL.createObjectURL(file);
 
       if (side) {
         const prevSlot = prev[key]?.[side];
-        if (prevSlot?.previewUrl && prevSlot.previewUrl !== "pdf")
-          URL.revokeObjectURL(prevSlot.previewUrl);
+
+        if (
+          prevSlot?.previewUrl &&
+          prevSlot.previewUrl !== "pdf"
+        ) {
+          URL.revokeObjectURL(
+            prevSlot.previewUrl,
+          );
+        }
+
         return {
           ...prev,
-          [key]: { ...prev[key], [side]: { file, previewUrl } },
+          [key]: {
+            ...prev[key],
+            [side]: {
+              file,
+              previewUrl,
+            },
+          },
         };
       }
 
-      if (prev[key]?.previewUrl && prev[key].previewUrl !== "pdf")
-        URL.revokeObjectURL(prev[key].previewUrl);
-      return { ...prev, [key]: { file, previewUrl } };
+      if (
+        prev[key]?.previewUrl &&
+        prev[key].previewUrl !== "pdf"
+      ) {
+        URL.revokeObjectURL(
+          prev[key].previewUrl,
+        );
+      }
+
+      return {
+        ...prev,
+        [key]: {
+          file,
+          previewUrl,
+        },
+      };
     });
 
-    // Clear any "please upload X" error now that a file is attached.
     setErrors((prev) => ({
       ...prev,
-      "documents.citizenship_front": undefined,
-      "documents.citizenship_back": undefined,
-      "documents.supporting_document": undefined,
+      "documents.citizenship_front":
+        undefined,
+      "documents.citizenship_back":
+        undefined,
+      "documents.supporting_document":
+        undefined,
     }));
   }
 
+  // ============================================================
+  // PREVIEW
+  // ============================================================
+
   function handlePreview() {
-    const errs = validate(formData, documents);
+    const errs = validate(
+      formData,
+      documents,
+    );
+
     if (Object.keys(errs).length) {
       setErrors(errs);
-      // Name the first problem rather than just saying "fill in the fields" —
-      // the offending field may be scrolled out of view.
-      notify.error(Object.values(errs)[0]);
+
+      notify.error(
+        Object.values(errs)[0],
+      );
+
       return;
     }
+
     setShowPreview(true);
   }
 
+  // ============================================================
+  // SUBMIT
+  // ============================================================
+
   function handleSubmit(e) {
     e.preventDefault();
-    const errs = validate(formData, documents);
+
+    const errs = validate(
+      formData,
+      documents,
+    );
+
     if (Object.keys(errs).length) {
       setErrors(errs);
-      notify.error(Object.values(errs)[0]);
+
+      notify.error(
+        Object.values(errs)[0],
+      );
+
       return;
     }
 
@@ -916,64 +1224,125 @@ function RecommendationLetter({ wards = [] }) {
 
     const payload = {
       letter_type: formData.letter_type,
-      letter_type_other: formData.letter_type_other,
-      applicant_full_name_np: formData.applicant_full_name_np,
-      applicant_full_name_en: formData.applicant_full_name_en,
-      applicant_citizenship_no: formData.applicant_citizenship_no,
-      applicant_contact_no: formData.applicant_contact_no,
+      letter_type_other:
+        formData.letter_type_other,
+
+      applicant_full_name_np:
+        formData.applicant_full_name_np,
+
+      applicant_full_name_en:
+        formData.applicant_full_name_en,
+
+      applicant_citizenship_no:
+        formData.applicant_citizenship_no,
+
+      applicant_contact_no:
+        formData.applicant_contact_no,
+
       purpose: formData.purpose,
-      register_ward_id: formData.register_ward_id,
+
+      register_ward_id:
+        formData.register_ward_id,
+
       address: {
         ...formData.address,
-        applicant_ward_number: Number(formData.address.applicant_ward_number),
+
+        applicant_ward_number: Number(
+          formData.address.applicant_ward_number,
+        ),
       },
     };
 
     const body = new FormData();
-    body.append("letter", JSON.stringify(payload));
-    if (documents.applicant_citizenship.front.file)
+
+    body.append(
+      "letter",
+      JSON.stringify(payload),
+    );
+
+    if (
+      documents.applicant_citizenship.front.file
+    ) {
       body.append(
         "applicant_citizenship_front",
         documents.applicant_citizenship.front.file,
       );
-    if (documents.applicant_citizenship.back.file)
+    }
+
+    if (
+      documents.applicant_citizenship.back.file
+    ) {
       body.append(
         "applicant_citizenship_back",
         documents.applicant_citizenship.back.file,
       );
-    if (documents.supporting_document.file)
-      body.append("supporting_document", documents.supporting_document.file);
+    }
 
-    fetch(`${API_URL}/v1/recommendation-letter/`, {
-      method: "POST",
-      credentials: "include",
-      body,
-    })
+    if (
+      documents.supporting_document.file
+    ) {
+      body.append(
+        "supporting_document",
+        documents.supporting_document.file,
+      );
+    }
+
+    fetch(
+      `${API_URL}/v1/recommendation-letter/`,
+      {
+        method: "POST",
+        credentials: "include",
+        body,
+      },
+    )
       .then((response) =>
         response.json().then((data) => {
           if (!response.ok) throw data;
+
           return data;
         }),
       )
       .then(() => {
-        notify.success("Recommendation letter request submitted successfully!");
+        notify.success(
+          "Recommendation letter request submitted successfully!",
+        );
+
         setFormData(initial_data);
-        setDocuments(emptyDocuments());
+
+        setDocuments(
+          emptyDocuments(),
+        );
+
         setErrors({});
+
         setAddressOverride(false);
+
         setShowPreview(false);
-        // The address comes from the account, not the form — restore it so
-        // the citizen can file another letter without reloading.
-        if (myAddress) applyMyAddressToForm(myAddress);
+
+        // Reset transliteration buffers.
+        romanBuffer.current = "";
+        purposeRomanBuffer.current = "";
+
+        if (myAddress) {
+          applyMyAddressToForm(
+            myAddress,
+          );
+        }
       })
       .catch((err) => {
-        // notify.apiError unpacks FastAPI's `detail`, which is a LIST of
-        // validation objects for its own 422s and a plain string for our
-        // HTTPException calls.
-        notify.apiError(err, "Submission failed. Please try again.");
+        notify.apiError(
+          err,
+          "Submission failed. Please try again.",
+        );
       })
-      .finally(() => setSubmitting(false));
+      .finally(() =>
+        setSubmitting(false),
+      );
   }
+
+  // ============================================================
+  // RENDER
+  // ============================================================
 
   return (
     <>
@@ -981,22 +1350,29 @@ function RecommendationLetter({ wards = [] }) {
         <div className="min-h-screen bg-gray-100 p-8 max-w-6xl mx-auto">
           <div className="flex justify-between items-center mb-4">
             <button
-              onClick={() => setShowPreview(false)}
+              onClick={() =>
+                setShowPreview(false)
+              }
               className="flex items-center gap-2 bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded-md cursor-pointer transition-colors"
             >
               ← पछाडि जानुहोस् (Back to Form)
             </button>
+
             <button
-              onClick={() => window.print()}
+              onClick={() =>
+                window.print()
+              }
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md cursor-pointer transition-colors"
             >
               🖨️ Print / Download
             </button>
           </div>
-          <RecommendationPreview formData={formData} documents={documents} />
 
-          {/* Submit from the preview too — otherwise the person has to go back
-              to the form to do the thing they just finished reviewing. */}
+          <RecommendationPreview
+            formData={formData}
+            documents={documents}
+          />
+
           <div className="flex justify-end mt-4">
             <button
               type="button"
@@ -1006,7 +1382,8 @@ function RecommendationLetter({ wards = [] }) {
             >
               {submitting ? (
                 <>
-                  <Spinner /> पेश गर्दै…
+                  <Spinner />
+                  पेश गर्दै…
                 </>
               ) : (
                 "Submit"
@@ -1021,150 +1398,287 @@ function RecommendationLetter({ wards = [] }) {
           noValidate
         >
           <div>
+            {/* ==================================================
+                HEADER
+            ================================================== */}
+
             <div className="flex items-center gap-4 mb-6">
               <img
                 src={logo}
                 alt="Government of Nepal"
                 className="w-16 h-16 object-contain"
               />
+
               <div>
                 <p className="text-sm text-gray-500 uppercase tracking-widest">
                   Government of Nepal
                 </p>
+
                 <h1 className="text-4xl font-bold">
                   Recommendation Letter Request
                 </h1>
               </div>
             </div>
 
-            {/* ── Letter type ── */}
+            {/* ==================================================
+                LETTER TYPE
+            ================================================== */}
+
             <div className="bg-white p-6 rounded-xl shadow-md">
               <h2 className="text-2xl font-semibold text-blue-700 mb-6">
                 सिफारिसको प्रकार (Letter Type)
               </h2>
+
               <div>
-                <label>सिफारिसको प्रकार (Letter Type)</label>
+                <label>
+                  सिफारिसको प्रकार (Letter Type)
+                </label>
+
                 <select
                   name="letter_type"
                   value={formData.letter_type}
                   onChange={handleChange}
-                  className={`${inputStyle} bg-white ${errors.letter_type ? "border-red-400" : ""}`}
+                  className={`${inputStyle} bg-white ${
+                    errors.letter_type
+                      ? "border-red-400"
+                      : ""
+                  }`}
                 >
                   <option value="">
                     -- प्रकार छान्नुहोस् (Select Type) --
                   </option>
+
                   {LETTER_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>
+                    <option
+                      key={t.value}
+                      value={t.value}
+                    >
                       {t.label}
                     </option>
                   ))}
                 </select>
-                <FieldError msg={errors.letter_type} />
+
+                <FieldError
+                  msg={errors.letter_type}
+                />
               </div>
 
-              {formData.letter_type === "OTHER" && (
+              {formData.letter_type ===
+                "OTHER" && (
                 <div className="mt-4">
-                  <label>अन्य प्रकार खुलाउनुहोस् (Specify Type)</label>
+                  <label>
+                    अन्य प्रकार खुलाउनुहोस्
+                    (Specify Type)
+                  </label>
+
                   <input
                     type="text"
                     name="letter_type_other"
-                    value={formData.letter_type_other}
+                    value={
+                      formData.letter_type_other
+                    }
                     onChange={handleChange}
                     placeholder="प्रकार लेख्नुहोस्"
-                    className={`${inputStyle} ${errors.letter_type_other ? "border-red-400" : ""}`}
+                    className={`${inputStyle} ${
+                      errors.letter_type_other
+                        ? "border-red-400"
+                        : ""
+                    }`}
                   />
-                  <FieldError msg={errors.letter_type_other} />
+
+                  <FieldError
+                    msg={
+                      errors.letter_type_other
+                    }
+                  />
                 </div>
               )}
 
               {formData.letter_type && (
                 <div className="mt-4 p-3 rounded-lg bg-blue-50 border border-blue-100 text-sm text-blue-800">
                   <span className="font-semibold">
-                    यो सिफारिसको लागि आवश्यक कागजात (Document required for this
+                    यो सिफारिसको लागि आवश्यक कागजात
+                    (Document required for this
                     letter):{" "}
                   </span>
-                  {requirementFor(formData.letter_type).supportingLabel}
-                  {requirementFor(formData.letter_type).supportingRequired ? (
+
+                  {
+                    requirementFor(
+                      formData.letter_type,
+                    ).supportingLabel
+                  }
+
+                  {requirementFor(
+                    formData.letter_type,
+                  ).supportingRequired ? (
                     <span className="text-red-600 font-semibold">
                       {" "}
                       (अनिवार्य / Required)
                     </span>
                   ) : (
-                    <span className="text-gray-500"> (वैकल्पिक / Optional)</span>
+                    <span className="text-gray-500">
+                      {" "}
+                      (वैकल्पिक / Optional)
+                    </span>
                   )}
+
                   <div className="text-xs text-gray-500 mt-1">
-                    नागरिकताको दुवैतर्फ (अगाडि/पछाडि) सबै प्रकारका सिफारिसको
-                    लागि अनिवार्य छ।
+                    नागरिकताको दुवैतर्फ
+                    (अगाडि/पछाडि) सबै प्रकारका
+                    सिफारिसको लागि अनिवार्य छ।
                     <br />
-                    (Both sides of citizenship are required for every letter
-                    type.)
+                    (Both sides of citizenship
+                    are required for every
+                    letter type.)
                   </div>
                 </div>
               )}
             </div>
 
-            {/* ── Applicant info ── */}
+            {/* ==================================================
+                APPLICANT INFORMATION
+            ================================================== */}
+
             <div className="bg-white p-6 rounded-xl shadow-md mt-4">
               <h2 className="text-2xl font-semibold text-blue-700 mb-6">
-                निवेदकको जानकारी (Applicant Information)
+                निवेदकको जानकारी (Applicant
+                Information)
               </h2>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* English Name */}
+
                 <div>
-                  <label>Full Name (English)</label>
+                  <label>
+                    Full Name (English)
+                  </label>
+
                   <input
                     type="text"
                     name="applicant_full_name_en"
-                    value={formData.applicant_full_name_en}
+                    value={
+                      formData.applicant_full_name_en
+                    }
                     onChange={handleChange}
                     placeholder="पूरा नाम लेख्नुहोस् (Enter Full Name)"
-                    className={`${inputStyle} ${errors.applicant_full_name_en ? "border-red-400" : ""}`}
+                    className={`${inputStyle} ${
+                      errors.applicant_full_name_en
+                        ? "border-red-400"
+                        : ""
+                    }`}
                   />
-                  <FieldError msg={errors.applicant_full_name_en} />
-                </div>
-                <div>
-                  <label>पूरा नाम (Nepali)</label>
-                  <input
-                    type="text"
-                    value={formData.applicant_full_name_np}
-                    onKeyDown={handleNepaliNameKeyDown}
-                    onPaste={handleNepaliNamePaste}
-                    onChange={() => {}}
-                    placeholder="यहाँ English मा टाइप गर्नुहोस्, नेपालीमा देखिनेछ"
-                    className={`${inputStyle} ${errors.applicant_full_name_np ? "border-red-400" : ""}`}
+
+                  <FieldError
+                    msg={
+                      errors.applicant_full_name_en
+                    }
                   />
-                  <FieldError msg={errors.applicant_full_name_np} />
                 </div>
 
+                {/* Nepali Name */}
+
                 <div>
-                  <label>नागरिकता नम्बर (Citizenship Number)</label>
+                  <label>
+                    पूरा नाम (Nepali)
+                  </label>
+
+                  <input
+                    type="text"
+                    value={
+                      formData.applicant_full_name_np
+                    }
+                    onKeyDown={
+                      handleNepaliNameKeyDown
+                    }
+                    onPaste={
+                      handleNepaliNamePaste
+                    }
+                    onChange={() => {}}
+                    placeholder="यहाँ English मा टाइप गर्नुहोस्, नेपालीमा देखिनेछ"
+                    className={`${inputStyle} ${
+                      errors.applicant_full_name_np
+                        ? "border-red-400"
+                        : ""
+                    }`}
+                  />
+
+                  <FieldError
+                    msg={
+                      errors.applicant_full_name_np
+                    }
+                  />
+                </div>
+
+                {/* Citizenship */}
+
+                <div>
+                  <label>
+                    नागरिकता नम्बर (Citizenship
+                    Number)
+                  </label>
+
                   <input
                     type="text"
                     name="applicant_citizenship_no"
-                    value={formData.applicant_citizenship_no}
-                    onChange={handleCitizenshipChange}
+                    value={
+                      formData.applicant_citizenship_no
+                    }
+                    onChange={
+                      handleCitizenshipChange
+                    }
                     placeholder="12-34-56789"
-                    className={`${inputStyle} ${errors.applicant_citizenship_no ? "border-red-400" : ""}`}
+                    className={`${inputStyle} ${
+                      errors.applicant_citizenship_no
+                        ? "border-red-400"
+                        : ""
+                    }`}
                   />
-                  <FieldError msg={errors.applicant_citizenship_no} />
+
+                  <FieldError
+                    msg={
+                      errors.applicant_citizenship_no
+                    }
+                  />
                 </div>
+
+                {/* Contact */}
+
                 <div>
                   <label>
-                    फोन नम्बर (Phone Number) <i>(Optional)</i>
+                    फोन नम्बर (Phone Number){" "}
+                    <i>(Optional)</i>
                   </label>
+
                   <input
                     type="tel"
                     name="applicant_contact_no"
-                    value={formData.applicant_contact_no}
-                    onChange={handleContactChange}
+                    value={
+                      formData.applicant_contact_no
+                    }
+                    onChange={
+                      handleContactChange
+                    }
                     placeholder="98XXXXXXXX"
-                    className={`${inputStyle} ${errors.applicant_contact_no ? "border-red-400" : ""}`}
+                    className={`${inputStyle} ${
+                      errors.applicant_contact_no
+                        ? "border-red-400"
+                        : ""
+                    }`}
                   />
-                  <FieldError msg={errors.applicant_contact_no} />
+
+                  <FieldError
+                    msg={
+                      errors.applicant_contact_no
+                    }
+                  />
                 </div>
               </div>
             </div>
 
-            {/* ── Address — fetched directly from the backend ── */}
+            {/* ==================================================
+                ADDRESS
+            ================================================== */}
+
             <ApplicantAddressSection
               wards={wards}
               formData={formData}
@@ -1174,79 +1688,139 @@ function RecommendationLetter({ wards = [] }) {
               addressError={addressError}
               myAddress={myAddress}
               allowOverride={allowOverride}
-              overrideChecked={addressOverride}
-              onOverrideToggle={handleAddressOverrideToggle}
+              overrideChecked={
+                addressOverride
+              }
+              onOverrideToggle={
+                handleAddressOverrideToggle
+              }
             />
 
-            {/* ── Purpose ── */}
+            {/* ==================================================
+                PURPOSE
+            ================================================== */}
+
             <div className="bg-white p-6 rounded-xl shadow-md mt-4">
               <h2 className="text-2xl font-semibold text-blue-700 mb-6">
                 प्रयोजन (Purpose)
               </h2>
 
               {formData.letter_type &&
-                PURPOSE_SUGGESTIONS[formData.letter_type]?.length > 0 && (
+                PURPOSE_SUGGESTIONS[
+                  formData.letter_type
+                ]?.length > 0 && (
                   <div className="mb-3">
                     <p className="text-xs text-gray-500 mb-2">
-                      यो सिफारिस सामान्यतया यी प्रयोजनका लागि लिइन्छ — मिल्ने
-                      विकल्प छान्नुहोस् (Common reasons for this letter — tap
-                      one, then edit if needed):
+                      यो सिफारिस सामान्यतया यी
+                      प्रयोजनका लागि लिइन्छ —
+                      मिल्ने विकल्प छान्नुहोस्
+                      (Common reasons for this
+                      letter — tap one, then edit
+                      if needed):
                     </p>
+
                     <div className="flex flex-wrap gap-2">
-                      {PURPOSE_SUGGESTIONS[formData.letter_type].map(
-                        (suggestion) => (
-                          <button
-                            key={suggestion}
-                            type="button"
-                            onClick={() =>
-                              handlePurposeSuggestionClick(suggestion)
-                            }
-                            className={`text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer ${
-                              formData.purpose === suggestion
-                                ? "bg-blue-600 text-white border-blue-600"
-                                : "bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100"
-                            }`}
-                          >
-                            {suggestion}
-                          </button>
-                        ),
-                      )}
+                      {PURPOSE_SUGGESTIONS[
+                        formData.letter_type
+                      ].map((suggestion) => (
+                        <button
+                          key={suggestion}
+                          type="button"
+                          onClick={() =>
+                            handlePurposeSuggestionClick(
+                              suggestion,
+                            )
+                          }
+                          className={`text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer ${
+                            formData.purpose ===
+                            suggestion
+                              ? "bg-blue-600 text-white border-blue-600"
+                              : "bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100"
+                          }`}
+                        >
+                          {suggestion}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}
 
+              {/* ==================================================
+                  PURPOSE TEXTAREA WITH NEPALI TRANSLITERATION
+              ================================================== */}
+
               <textarea
                 name="purpose"
                 value={formData.purpose}
-                onChange={handleChange}
+                onKeyDown={
+                  handlePurposeKeyDown
+                }
+                onPaste={
+                  handlePurposePaste
+                }
+                onChange={() => {}}
                 rows={4}
-                placeholder="यो सिफारिस पत्र किन आवश्यक छ, लेख्नुहोस्…"
-                className={`${inputStyle} resize-vertical ${errors.purpose ? "border-red-400" : ""}`}
+                placeholder="यहाँ English मा टाइप गर्नुहोस्, नेपालीमा देखिनेछ"
+                className={`${inputStyle} resize-vertical ${
+                  errors.purpose
+                    ? "border-red-400"
+                    : ""
+                }`}
               />
-              <FieldError msg={errors.purpose} />
+
+              <p className="text-xs text-gray-400 mt-2">
+                English मा टाइप गर्नुहोस्, नेपालीमा
+                स्वतः परिवर्तन हुनेछ।
+                <br />
+                Example:{" "}
+                <span className="font-medium">
+                  bank account kholna ko lagi
+                </span>
+              </p>
+
+              <FieldError
+                msg={errors.purpose}
+              />
             </div>
 
-            {/* ── Documents ── */}
+            {/* ==================================================
+                DOCUMENTS
+            ================================================== */}
+
             <div className="bg-white p-6 rounded-xl shadow-md mt-4">
               <h3 className="text-sm font-semibold text-gray-700 mb-3">
-                सहयोगी कागजातहरू (Supporting Documents)
+                सहयोगी कागजातहरू (Supporting
+                Documents)
+
                 <span className="text-xs text-gray-400 font-normal ml-2">
                   (max 5MB each)
                 </span>
               </h3>
+
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {/* Citizenship */}
+
                 <div className="col-span-2 border border-gray-200 rounded-lg p-3">
                   <span className="text-xs font-medium text-gray-600 block text-center mb-2">
-                    निवेदकको नागरिकता (Applicant's Citizenship)
+                    निवेदकको नागरिकता
+                    (Applicant's Citizenship)
                   </span>
+
                   <div className="grid grid-cols-2 gap-3">
                     <UploadTile
                       label="अगाडि (Front)"
                       previewUrl={
-                        documents.applicant_citizenship.front.previewUrl
+                        documents
+                          .applicant_citizenship
+                          .front
+                          .previewUrl
                       }
                       isPdf={
-                        documents.applicant_citizenship.front.file?.type ===
+                        documents
+                          .applicant_citizenship
+                          .front
+                          .file
+                          ?.type ===
                         "application/pdf"
                       }
                       onFileSelected={(file) =>
@@ -1257,13 +1831,21 @@ function RecommendationLetter({ wards = [] }) {
                         )
                       }
                     />
+
                     <UploadTile
                       label="पछाडि (Back)"
                       previewUrl={
-                        documents.applicant_citizenship.back.previewUrl
+                        documents
+                          .applicant_citizenship
+                          .back
+                          .previewUrl
                       }
                       isPdf={
-                        documents.applicant_citizenship.back.file?.type ===
+                        documents
+                          .applicant_citizenship
+                          .back
+                          .file
+                          ?.type ===
                         "application/pdf"
                       }
                       onFileSelected={(file) =>
@@ -1275,39 +1857,82 @@ function RecommendationLetter({ wards = [] }) {
                       }
                     />
                   </div>
-                  <FieldError msg={errors["documents.citizenship_front"]} />
-                  <FieldError msg={errors["documents.citizenship_back"]} />
+
+                  <FieldError
+                    msg={
+                      errors[
+                        "documents.citizenship_front"
+                      ]
+                    }
+                  />
+
+                  <FieldError
+                    msg={
+                      errors[
+                        "documents.citizenship_back"
+                      ]
+                    }
+                  />
                 </div>
+
+                {/* Supporting Document */}
 
                 {formData.letter_type ? (
                   <div className="col-span-2 border border-gray-200 rounded-lg p-3 flex flex-col items-center gap-2">
                     <UploadTile
-                      label={`${requirementFor(formData.letter_type).supportingLabel}${
-                        requirementFor(formData.letter_type).supportingRequired
+                      label={`${requirementFor(
+                        formData.letter_type,
+                      ).supportingLabel}${
+                        requirementFor(
+                          formData.letter_type,
+                        ).supportingRequired
                           ? " *"
                           : ""
                       }`}
-                      previewUrl={documents.supporting_document.previewUrl}
+                      previewUrl={
+                        documents
+                          .supporting_document
+                          .previewUrl
+                      }
                       isPdf={
-                        documents.supporting_document.file?.type ===
+                        documents
+                          .supporting_document
+                          .file
+                          ?.type ===
                         "application/pdf"
                       }
                       onFileSelected={(file) =>
-                        handleDocumentSelect("supporting_document", file)
+                        handleDocumentSelect(
+                          "supporting_document",
+                          file,
+                        )
                       }
                     />
-                    <FieldError msg={errors["documents.supporting_document"]} />
+
+                    <FieldError
+                      msg={
+                        errors[
+                          "documents.supporting_document"
+                        ]
+                      }
+                    />
                   </div>
                 ) : (
                   <div className="col-span-2 flex items-center justify-center text-xs text-gray-400 border border-dashed border-gray-300 rounded-lg p-4 text-center">
-                    सिफारिसको प्रकार छान्नुभएपछि आवश्यक कागजात देखिनेछ
+                    सिफारिसको प्रकार छान्नुभएपछि
+                    आवश्यक कागजात देखिनेछ
                     <br />
-                    (Select a letter type above to see the required document)
+                    (Select a letter type above
+                    to see the required document)
                   </div>
                 )}
               </div>
             </div>
           </div>
+
+          {/* ==================================================
+              FORM BUTTONS
+          ================================================== */}
 
           <div className="flex justify-between items-center">
             <button
@@ -1317,6 +1942,7 @@ function RecommendationLetter({ wards = [] }) {
             >
               👁️ Preview Letter
             </button>
+
             <button
               type="submit"
               disabled={submitting}
@@ -1324,7 +1950,8 @@ function RecommendationLetter({ wards = [] }) {
             >
               {submitting ? (
                 <>
-                  <Spinner /> पेश गर्दै…
+                  <Spinner />
+                  पेश गर्दै…
                 </>
               ) : (
                 "Submit"
