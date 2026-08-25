@@ -336,9 +336,9 @@ function ChildInfo({ setFormData, formData, handleChange }) {
                   return;
                 }
                 if (isNaN(value)) return;
-                if (value < 0 || value > 15) {
+                if (value < 0 || value > 8) {
                   toast.error(
-                    "baby weight must be less than 15kg and more than 0kg",
+                    "Baby weight must be between 0kg and 8kg",
                   );
                   return;
                 }
