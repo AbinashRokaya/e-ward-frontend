@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "react-toastify";
 import logo from "../assets/nepal-sarkar.png";
 import API_URL from "../api/api";
 import RecommendationPreview from "../components/recommendation-component/RecommendationPreview";
 import { transliterateToNepali } from "../utils/nepaliTransliteration";
+import { notify } from "../utils/notify";
 
 const LETTER_TYPES = [
   { value: "RESIDENCE_PROOF", label: "बसोबास प्रमाणित (Residence Proof)" },
@@ -76,6 +76,17 @@ const DOCUMENT_REQUIREMENTS = {
     supportingLabel: "सहायक कागजात (Supporting Document, if any)",
   },
 };
+
+// Fallback for any letter_type not in the map above — reading
+// `.supportingLabel` off undefined would crash the render.
+const DEFAULT_DOCUMENT_REQUIREMENT = {
+  supportingRequired: false,
+  supportingLabel: "सहायक कागजात (Supporting Document, if any)",
+};
+
+function requirementFor(letterType) {
+  return DOCUMENT_REQUIREMENTS[letterType] || DEFAULT_DOCUMENT_REQUIREMENT;
+}
 
 // Most citizens don't know the exact bureaucratic phrasing ward offices
 // expect in the "purpose" field, so we suggest the most common real-world
@@ -156,6 +167,7 @@ const emptyDocuments = () => ({
 
 const englishRegex = /^[A-Za-z\s]*$/;
 const CITIZENSHIP_REGEX = /^[0-9-]+$/;
+const MAX_FILE_BYTES = 5 * 1024 * 1024;
 
 function validate(form, documents) {
   const e = {};
@@ -183,8 +195,18 @@ function validate(form, documents) {
   )
     e.applicant_contact_no = "Enter a valid Nepali mobile number.";
 
-  if (!form.register_ward_id)
-    e["address"] = "We couldn't determine your ward. Please reload the page.";
+  // When the citizen has unlocked the manual address picker, an incomplete
+  // selection leaves register_ward_id empty. Telling them to reload the page
+  // would wipe their work and fix nothing — the real fix is finishing the
+  // picker, so the message depends on which situation they're actually in.
+  if (!form.register_ward_id) {
+    const usingPicker =
+      LETTER_TYPES_ALLOWING_DIFFERENT_WARD.has(form.letter_type) &&
+      !form.address.applicant_ward_number;
+    e["address"] = usingPicker
+      ? "Please finish selecting the ward for the address you're applying from."
+      : "We couldn't determine your ward. Please reload the page.";
+  }
 
   if (!form.purpose.trim()) e.purpose = "Purpose is required.";
   else if (form.purpose.trim().length < 10)
@@ -195,8 +217,8 @@ function validate(form, documents) {
   if (!documents.applicant_citizenship.back.file)
     e["documents.citizenship_back"] = "Upload the back side of citizenship.";
 
-  const requirement = DOCUMENT_REQUIREMENTS[form.letter_type];
-  if (requirement?.supportingRequired && !documents.supporting_document.file)
+  const requirement = requirementFor(form.letter_type);
+  if (requirement.supportingRequired && !documents.supporting_document.file)
     e["documents.supporting_document"] =
       `Please upload: ${requirement.supportingLabel}`;
 
@@ -270,19 +292,13 @@ function UploadTile({ label, previewUrl, isPdf, onFileSelected }) {
 // The address is NOT a form the citizen fills in anymore. By default it's
 // a plain read-only summary of whatever GET /v1/recommendation-letter/
 // my-address returned — the backend resolves this from the logged-in
-// account's own ward, so there's no local ward list to search and no
-// dropdown state to keep in sync with a "currentUser" prop that may or
-// may not have been passed down.
+// account's own ward.
 //
 // The one exception is RESIDENCE_PROOF, where an applicant may genuinely
 // need a ward OTHER than their own to certify where they currently live.
-// For that case only, a checkbox unlocks a manual cascading
-// province/district/municipality/ward picker (still using the `wards`
-// list already passed in from CertificateManager, since that data is
-// static reference data, unlike per-user address info). Everywhere else,
-// the fields shown are exactly what the backend told us and nothing the
-// citizen types here is trusted — the backend re-derives and re-verifies
-// the address independently when the form is submitted.
+// For that case only, a checkbox unlocks a manual cascading picker. Nothing
+// typed here is trusted — the backend re-derives and re-verifies the address
+// independently when the form is submitted.
 function ApplicantAddressSection({
   wards,
   formData,
@@ -307,9 +323,7 @@ function ApplicantAddressSection({
     return [
       ...new Set(
         wards
-          .filter(
-            (w) => w.ward_province === formData.address.applicant_province,
-          )
+          .filter((w) => w.ward_province === formData.address.applicant_province)
           .map((w) => w.ward_district),
       ),
     ].sort();
@@ -656,8 +670,6 @@ function RecommendationLetter({ wards = [] }) {
   const [submitting, setSubmitting] = useState(false);
 
   // The address as returned by GET /v1/recommendation-letter/my-address.
-  // This is fetched directly from the backend — it does NOT depend on a
-  // wards list or a currentUser prop being passed down correctly.
   const [myAddress, setMyAddress] = useState(null);
   const [addressLoading, setAddressLoading] = useState(true);
   const [addressError, setAddressError] = useState("");
@@ -700,11 +712,9 @@ function RecommendationLetter({ wards = [] }) {
     }));
   }
 
-  // Fetch the citizen's own address straight from the backend on mount.
-  // This replaces any client-side "find my ward in a wards list using a
-  // currentUser prop" logic — the backend already knows who the logged-in
-  // user is (same session cookie every other request here uses) and
-  // resolves the address itself.
+  // Fetch the citizen's own address straight from the backend on mount. The
+  // backend already knows who the logged-in user is (same session cookie
+  // every other request uses) and resolves the address itself.
   useEffect(() => {
     let cancelled = false;
     setAddressLoading(true);
@@ -727,10 +737,16 @@ function RecommendationLetter({ wards = [] }) {
       })
       .catch((err) => {
         if (cancelled) return;
-        setAddressError(
-          err?.detail ||
-            "तपाईंको ठेगाना लोड गर्न सकिएन। (Could not load your address.)",
-        );
+        console.error("Failed to load address:", err);
+        // Shown inline in the address section AND as a toast — without the
+        // address the form can't be submitted at all, so it shouldn't be
+        // possible to miss while scrolled elsewhere.
+        const message =
+          typeof err?.detail === "string"
+            ? err.detail
+            : "तपाईंको ठेगाना लोड गर्न सकिएन। (Could not load your address.)";
+        setAddressError(message);
+        notify.error(message);
       })
       .finally(() => {
         if (!cancelled) setAddressLoading(false);
@@ -840,6 +856,13 @@ function RecommendationLetter({ wards = [] }) {
   }
 
   function handleDocumentSelect(key, file, side) {
+    // Reject oversized files at selection time rather than letting the whole
+    // submission fail after everything else is filled in.
+    if (file.size > MAX_FILE_BYTES) {
+      notify.error("File must be under 5MB.");
+      return;
+    }
+
     setDocuments((prev) => {
       const previewUrl =
         file.type === "application/pdf" ? "pdf" : URL.createObjectURL(file);
@@ -858,13 +881,23 @@ function RecommendationLetter({ wards = [] }) {
         URL.revokeObjectURL(prev[key].previewUrl);
       return { ...prev, [key]: { file, previewUrl } };
     });
+
+    // Clear any "please upload X" error now that a file is attached.
+    setErrors((prev) => ({
+      ...prev,
+      "documents.citizenship_front": undefined,
+      "documents.citizenship_back": undefined,
+      "documents.supporting_document": undefined,
+    }));
   }
 
   function handlePreview() {
     const errs = validate(formData, documents);
     if (Object.keys(errs).length) {
       setErrors(errs);
-      toast.error("Please fill in all required fields before previewing.");
+      // Name the first problem rather than just saying "fill in the fields" —
+      // the offending field may be scrolled out of view.
+      notify.error(Object.values(errs)[0]);
       return;
     }
     setShowPreview(true);
@@ -875,7 +908,7 @@ function RecommendationLetter({ wards = [] }) {
     const errs = validate(formData, documents);
     if (Object.keys(errs).length) {
       setErrors(errs);
-      toast.error("Please fix the highlighted fields.");
+      notify.error(Object.values(errs)[0]);
       return;
     }
 
@@ -922,18 +955,22 @@ function RecommendationLetter({ wards = [] }) {
           return data;
         }),
       )
-      .then((data) => {
-        console.log("Submission successful", data);
-        toast.success("Recommendation letter request submitted successfully!");
+      .then(() => {
+        notify.success("Recommendation letter request submitted successfully!");
         setFormData(initial_data);
         setDocuments(emptyDocuments());
         setErrors({});
         setAddressOverride(false);
+        setShowPreview(false);
+        // The address comes from the account, not the form — restore it so
+        // the citizen can file another letter without reloading.
         if (myAddress) applyMyAddressToForm(myAddress);
       })
       .catch((err) => {
-        console.error("Submission failed:", err);
-        toast.error(err?.detail || "Submission failed. Please try again.");
+        // notify.apiError unpacks FastAPI's `detail`, which is a LIST of
+        // validation objects for its own 422s and a plain string for our
+        // HTTPException calls.
+        notify.apiError(err, "Submission failed. Please try again.");
       })
       .finally(() => setSubmitting(false));
   }
@@ -957,6 +994,25 @@ function RecommendationLetter({ wards = [] }) {
             </button>
           </div>
           <RecommendationPreview formData={formData} documents={documents} />
+
+          {/* Submit from the preview too — otherwise the person has to go back
+              to the form to do the thing they just finished reviewing. */}
+          <div className="flex justify-end mt-4">
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-6 py-2 rounded-md cursor-pointer transition-colors flex items-center gap-2"
+            >
+              {submitting ? (
+                <>
+                  <Spinner /> पेश गर्दै…
+                </>
+              ) : (
+                "Submit"
+              )}
+            </button>
+          </div>
         </div>
       ) : (
         <form
@@ -1027,18 +1083,14 @@ function RecommendationLetter({ wards = [] }) {
                     यो सिफारिसको लागि आवश्यक कागजात (Document required for this
                     letter):{" "}
                   </span>
-                  {DOCUMENT_REQUIREMENTS[formData.letter_type].supportingLabel}
-                  {DOCUMENT_REQUIREMENTS[formData.letter_type]
-                    .supportingRequired ? (
+                  {requirementFor(formData.letter_type).supportingLabel}
+                  {requirementFor(formData.letter_type).supportingRequired ? (
                     <span className="text-red-600 font-semibold">
                       {" "}
                       (अनिवार्य / Required)
                     </span>
                   ) : (
-                    <span className="text-gray-500">
-                      {" "}
-                      (वैकल्पिक / Optional)
-                    </span>
+                    <span className="text-gray-500"> (वैकल्पिक / Optional)</span>
                   )}
                   <div className="text-xs text-gray-500 mt-1">
                     नागरिकताको दुवैतर्फ (अगाडि/पछाडि) सबै प्रकारका सिफारिसको
@@ -1178,6 +1230,9 @@ function RecommendationLetter({ wards = [] }) {
             <div className="bg-white p-6 rounded-xl shadow-md mt-4">
               <h3 className="text-sm font-semibold text-gray-700 mb-3">
                 सहयोगी कागजातहरू (Supporting Documents)
+                <span className="text-xs text-gray-400 font-normal ml-2">
+                  (max 5MB each)
+                </span>
               </h3>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div className="col-span-2 border border-gray-200 rounded-lg p-3">
@@ -1227,9 +1282,8 @@ function RecommendationLetter({ wards = [] }) {
                 {formData.letter_type ? (
                   <div className="col-span-2 border border-gray-200 rounded-lg p-3 flex flex-col items-center gap-2">
                     <UploadTile
-                      label={`${DOCUMENT_REQUIREMENTS[formData.letter_type].supportingLabel}${
-                        DOCUMENT_REQUIREMENTS[formData.letter_type]
-                          .supportingRequired
+                      label={`${requirementFor(formData.letter_type).supportingLabel}${
+                        requirementFor(formData.letter_type).supportingRequired
                           ? " *"
                           : ""
                       }`}
@@ -1266,7 +1320,7 @@ function RecommendationLetter({ wards = [] }) {
             <button
               type="submit"
               disabled={submitting}
-              className="bg-blue-300 hover:bg-slate-300 disabled:bg-blue-200 px-6 py-2 rounded-md cursor-pointer transition-colors flex items-center gap-2"
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-6 py-2 rounded-md cursor-pointer transition-colors flex items-center gap-2"
             >
               {submitting ? (
                 <>

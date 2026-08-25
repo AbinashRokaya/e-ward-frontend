@@ -2,7 +2,11 @@ import { useState } from "react";
 import logo from "../assets/nepal-sarkar.png";
 
 import API_URL from "../api/api";
-import { toast } from "react-toastify";
+import { notify } from "../utils/notify";
+import {
+  validateDeathRegistration,
+  deathRegistrationWarnings,
+} from "../validation/death-registration-validation";
 import DeceasedInfo from "../components/deathregistration-component/Deceasedinfo";
 import DeathDetailInfo from "../components/deathregistration-component/Deathdetailinfo";
 import DeathAddressInfo from "../components/deathregistration-component/Deathaddressinfo";
@@ -113,27 +117,7 @@ const DOCUMENT_FIELDS = [
   { key: "police_report", label: "प्रहरी प्रतिवेदन (Police Report)" },
 ];
 
-// ── Safely extracts a human-readable message from an API error body.
-// FastAPI's own validation errors return `detail` as a LIST of
-// {type, loc, msg, input, ctx} objects, not a string — passing that
-// straight into toast.error() (or rendering it directly) crashes with
-// "Objects are not valid as a React child". Our own HTTPException calls
-// return `detail` as a plain string, which this also handles.
-function extractErrorMessage(err, fallback) {
-  const detail = err?.detail;
-  if (Array.isArray(detail)) {
-    return (
-      detail
-        .map((d) => d?.msg)
-        .filter(Boolean)
-        .join("; ") || fallback
-    );
-  }
-  if (typeof detail === "string" && detail.trim()) {
-    return detail;
-  }
-  return fallback;
-}
+const MAX_FILE_BYTES = 5 * 1024 * 1024;
 
 function Spinner() {
   return (
@@ -196,6 +180,9 @@ function DocumentUploads({ documents, onSelect }) {
     <div className="md:col-span-2 mt-2 pt-4 border-t border-gray-100">
       <h3 className="text-sm font-semibold text-gray-700 mb-3">
         सहयोगी कागजातहरू (Supporting Documents)
+        <span className="text-xs text-gray-400 font-normal ml-2">
+          (max 5MB each)
+        </span>
       </h3>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {DOCUMENT_FIELDS.map((field) => {
@@ -215,9 +202,7 @@ function DocumentUploads({ documents, onSelect }) {
                     label="अगाडि (Front)"
                     previewUrl={front?.previewUrl}
                     isPdf={front?.file?.type === "application/pdf"}
-                    onFileSelected={(file) =>
-                      onSelect(field.key, file, "front")
-                    }
+                    onFileSelected={(file) => onSelect(field.key, file, "front")}
                   />
                   <UploadTile
                     label="पछाडि (Back)"
@@ -262,13 +247,23 @@ function DeathRegistration({ wards }) {
   }
 
   function handleDocumentSelect(key, file, side) {
+    // Reject oversized files at selection time rather than letting the whole
+    // multi-megabyte submission fail after everything else is filled in.
+    if (file.size > MAX_FILE_BYTES) {
+      notify.error("File must be under 5MB.");
+      return;
+    }
+
     setDocuments((prev) => {
       const previewUrl =
         file.type === "application/pdf" ? "pdf" : URL.createObjectURL(file);
 
       if (side) {
         const prevSlot = prev[key]?.[side];
-        if (prevSlot?.previewUrl) URL.revokeObjectURL(prevSlot.previewUrl);
+        // Guard the "pdf" sentinel — it isn't a real object URL, and
+        // revoking it throws.
+        if (prevSlot?.previewUrl && prevSlot.previewUrl !== "pdf")
+          URL.revokeObjectURL(prevSlot.previewUrl);
         return {
           ...prev,
           [key]: {
@@ -278,7 +273,8 @@ function DeathRegistration({ wards }) {
         };
       }
 
-      if (prev[key]?.previewUrl) URL.revokeObjectURL(prev[key].previewUrl);
+      if (prev[key]?.previewUrl && prev[key].previewUrl !== "pdf")
+        URL.revokeObjectURL(prev[key].previewUrl);
       return {
         ...prev,
         [key]: { file, previewUrl },
@@ -288,6 +284,16 @@ function DeathRegistration({ wards }) {
 
   function handleSubmit(e) {
     e.preventDefault();
+
+    // Validate before hitting the network, so problems come back as readable
+    // messages instead of a raw 422 the person can't act on.
+    const errors = validateDeathRegistration(formData);
+    if (notify.firstError(errors)) return;
+
+    // Non-blocking — a late registration or an unnatural death gets flagged
+    // for attention without refusing a legitimate submission.
+    deathRegistrationWarnings(formData).forEach((w) => notify.warn(w));
+
     setSubmitting(true);
 
     const body = new FormData();
@@ -308,32 +314,40 @@ function DeathRegistration({ wards }) {
       }
     });
 
-    fetch(`${API_URL}/v1/death-registration`, {
+    // Trailing slash matches the API spec — without it FastAPI issues a
+    // redirect, which can drop the auth cookie on a cross-origin request.
+    fetch(`${API_URL}/v1/death-registration/`, {
       method: "POST",
       credentials: "include",
       body,
     })
-      .then((response) => {
-        return response.json().then((data) => {
-          if (!response.ok) {
-            throw data;
-          }
+      .then((response) =>
+        response.json().then((data) => {
+          if (!response.ok) throw data;
           return data;
-        });
-      })
-      .then((data) => {
-        console.log("Submission successful", data);
-        toast.success("Death registration submitted successfully!");
+        }),
+      )
+      .then(() => {
+        notify.success("Death registration submitted successfully!");
         setFormData(initial_data);
         setDocuments(emptyDocuments());
+        setShowPreview(false);
       })
       .catch((err) => {
-        console.error("Submission failed:", err);
-        toast.error(
-          extractErrorMessage(err, "Death registration submission failed."),
-        );
+        // notify.apiError unpacks FastAPI's `detail`, which is a LIST of
+        // validation objects for its own 422s and a plain string for our
+        // HTTPException calls.
+        notify.apiError(err, "Death registration submission failed.");
       })
       .finally(() => setSubmitting(false));
+  }
+
+  // Validate before previewing too — reviewing a certificate built from
+  // incomplete data just means finding the same problems twice.
+  function handlePreview() {
+    const errors = validateDeathRegistration(formData);
+    if (notify.firstError(errors)) return;
+    setShowPreview(true);
   }
 
   return (
@@ -356,12 +370,31 @@ function DeathRegistration({ wards }) {
           </div>
 
           <DeathPreview formData={formData} documents={documents} />
+
+          {/* Submit from the preview too — otherwise the person has to go back
+              to the form to do the thing they just finished reviewing. */}
+          <div className="flex justify-end mt-4">
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-6 py-2 rounded-md cursor-pointer transition-colors flex items-center gap-2"
+            >
+              {submitting ? (
+                <>
+                  <Spinner /> पेश गर्दै…
+                </>
+              ) : (
+                "Submit"
+              )}
+            </button>
+          </div>
         </div>
       ) : (
         <form
-          required
-          className="min-h-screen bg-gray-100 p-8 flex flex-col max-w-6xl mx-auto gap-4 "
+          className="min-h-screen bg-gray-100 p-8 flex flex-col max-w-6xl mx-auto gap-4"
           onSubmit={handleSubmit}
+          noValidate
         >
           <div>
             <div className="flex items-center gap-4 mb-6">
@@ -410,7 +443,7 @@ function DeathRegistration({ wards }) {
           <div className="flex justify-between items-center">
             <button
               type="button"
-              onClick={() => setShowPreview(true)}
+              onClick={handlePreview}
               className="bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium px-6 py-2 rounded-md cursor-pointer transition-colors"
             >
               👁️ Preview Certificate
@@ -418,7 +451,7 @@ function DeathRegistration({ wards }) {
             <button
               type="submit"
               disabled={submitting}
-              className="bg-blue-300 hover:bg-slate-300 disabled:bg-blue-200 px-6 py-2 rounded-md cursor-pointer transition-colors flex items-center gap-2"
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-6 py-2 rounded-md cursor-pointer transition-colors flex items-center gap-2"
             >
               {submitting ? (
                 <>

@@ -9,7 +9,12 @@ import EnclosuresInfo from "../components/migratioregistration-component/Enclosu
 import MigrationDetailInfo from "../components/migratioregistration-component/MigrationDetailinfo";
 import logo from "../assets/nepal-sarkar.png";
 import API_URL from "../api/api";
-import { toast } from "react-toastify";
+import { notify } from "../utils/notify";
+import {
+  validateMigrationRegistration,
+  migrationRegistrationWarnings,
+  isFamilyMemberStarted,
+} from "../validation/migration-registration-validation";
 
 let initial_data = {
   register_ward_id: "",
@@ -109,6 +114,8 @@ const DOCUMENT_FIELDS = [
   },
 ];
 
+const MAX_FILE_BYTES = 5 * 1024 * 1024;
+
 function Spinner() {
   return (
     <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
@@ -170,6 +177,9 @@ function DocumentUploads({ documents, onSelect }) {
     <div className="md:col-span-2 mt-2 pt-4 border-t border-gray-100">
       <h3 className="text-sm font-semibold text-gray-700 mb-3">
         सहयोगी कागजातहरू (Supporting Documents)
+        <span className="text-xs text-gray-400 font-normal ml-2">
+          (max 5MB each)
+        </span>
       </h3>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {DOCUMENT_FIELDS.map((field) => {
@@ -189,9 +199,7 @@ function DocumentUploads({ documents, onSelect }) {
                     label="अगाडि (Front)"
                     previewUrl={front?.previewUrl}
                     isPdf={front?.file?.type === "application/pdf"}
-                    onFileSelected={(file) =>
-                      onSelect(field.key, file, "front")
-                    }
+                    onFileSelected={(file) => onSelect(field.key, file, "front")}
                   />
                   <UploadTile
                     label="पछाडि (Back)"
@@ -228,6 +236,11 @@ function DocumentUploads({ documents, onSelect }) {
 // staff account) — their ward is already fixed by their login, so this
 // page reads register_ward_id from currentUser.user_ward_id instead of
 // asking them to pick a ward office on the form.
+//
+// NOTE: that wiring doesn't exist yet — no currentUser prop is passed in and
+// register_ward_id is never appended to the request body. The backend treats
+// it as optional, so submissions still go through, but the record won't be
+// tied to a ward until this is connected.
 function MigrationRegistration({ wards }) {
   const [showPreview, setShowPreview] = useState(false);
   const [formData, setFormData] = useState(initial_data);
@@ -235,6 +248,13 @@ function MigrationRegistration({ wards }) {
   const [submitting, setSubmitting] = useState(false);
 
   function handleDocumentSelect(key, file, side) {
+    // Reject oversized files at selection time rather than letting the whole
+    // multi-megabyte submission fail after everything else is filled in.
+    if (file.size > MAX_FILE_BYTES) {
+      notify.error("File must be under 5MB.");
+      return;
+    }
+
     setDocuments((prev) => {
       const previewUrl =
         file.type === "application/pdf" ? "pdf" : URL.createObjectURL(file);
@@ -264,6 +284,14 @@ function MigrationRegistration({ wards }) {
 
   function handleSubmit(e) {
     e.preventDefault();
+
+    // Validate before hitting the network, so problems come back as readable
+    // messages instead of a raw 422 the person can't act on.
+    const errors = validateMigrationRegistration(formData);
+    if (notify.firstError(errors)) return;
+
+    migrationRegistrationWarnings(formData).forEach((w) => notify.warn(w));
+
     setSubmitting(true);
 
     const addressesPayload = formData.addresses.map((a) => ({
@@ -271,13 +299,20 @@ function MigrationRegistration({ wards }) {
       ward_number: Number(a.ward_number) || 0,
     }));
 
+    // The form always renders one blank family-member row. Sending it would
+    // create a nameless member record, so only rows the person actually
+    // started filling in are submitted.
+    const familyMembersPayload = formData.family_members.filter(
+      isFamilyMemberStarted,
+    );
+
     // Router expects these as separate multipart Form fields (see
     // create_migration_registration), not one combined "payload" field.
     const body = new FormData();
     body.append("applicant", JSON.stringify(formData.applicant));
     body.append("addresses", JSON.stringify(addressesPayload));
     body.append("migration_detail", JSON.stringify(formData.migration_detail));
-    body.append("family_members", JSON.stringify(formData.family_members));
+    body.append("family_members", JSON.stringify(familyMembersPayload));
     body.append(
       "enclosure_citizenship_copy",
       formData.enclosure_citizenship_copy,
@@ -314,17 +349,27 @@ function MigrationRegistration({ wards }) {
           return data;
         }),
       )
-      .then((data) => {
-        console.log(data);
-        toast.success("Migration registration submitted successfully!");
+      .then(() => {
+        notify.success("Migration registration submitted successfully!");
         setFormData(initial_data);
         setDocuments(emptyDocuments());
+        setShowPreview(false);
       })
       .catch((err) => {
-        console.error("Submission failed:", err);
-        toast.error(err?.detail || "Migration registration submission failed.");
+        // notify.apiError unpacks FastAPI's `detail`, which is a LIST of
+        // validation objects for its own 422s and a plain string for our
+        // HTTPException calls.
+        notify.apiError(err, "Migration registration submission failed.");
       })
       .finally(() => setSubmitting(false));
+  }
+
+  // Validate before previewing too — reviewing a certificate built from
+  // incomplete data just means finding the same problems twice.
+  function handlePreview() {
+    const errors = validateMigrationRegistration(formData);
+    if (notify.firstError(errors)) return;
+    setShowPreview(true);
   }
 
   return (
@@ -347,12 +392,31 @@ function MigrationRegistration({ wards }) {
           </div>
 
           <MigrationPreview formData={formData} documents={documents} />
+
+          {/* Submit from the preview too — otherwise the person has to go back
+              to the form to do the thing they just finished reviewing. */}
+          <div className="flex justify-end mt-4">
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-6 py-2 rounded-md cursor-pointer transition-colors flex items-center gap-2"
+            >
+              {submitting ? (
+                <>
+                  <Spinner /> पेश गर्दै…
+                </>
+              ) : (
+                "Submit"
+              )}
+            </button>
+          </div>
         </div>
       ) : (
         <form
-          required
           className="min-h-screen bg-gray-100 p-8 flex flex-col max-w-6xl mx-auto gap-4"
           onSubmit={handleSubmit}
+          noValidate
         >
           <div>
             <div className="flex items-center gap-4 mb-6">
@@ -395,10 +459,7 @@ function MigrationRegistration({ wards }) {
               formData={formData}
             />
 
-            <MigrationDetailInfo
-              setFormData={setFormData}
-              formData={formData}
-            />
+            <MigrationDetailInfo setFormData={setFormData} formData={formData} />
 
             <FamilyMembersInfo setFormData={setFormData} formData={formData} />
 
@@ -415,7 +476,7 @@ function MigrationRegistration({ wards }) {
           <div className="flex justify-between items-center">
             <button
               type="button"
-              onClick={() => setShowPreview(true)}
+              onClick={handlePreview}
               className="bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium px-6 py-2 rounded-md cursor-pointer transition-colors"
             >
               👁️ Preview Certificate
@@ -423,7 +484,7 @@ function MigrationRegistration({ wards }) {
             <button
               type="submit"
               disabled={submitting}
-              className="bg-blue-300 hover:bg-slate-300 disabled:bg-blue-200 px-6 py-2 rounded-md cursor-pointer transition-colors flex items-center gap-2"
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-6 py-2 rounded-md cursor-pointer transition-colors flex items-center gap-2"
             >
               {submitting ? (
                 <>

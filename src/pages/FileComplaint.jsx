@@ -2,7 +2,7 @@
 import { useState } from "react";
 import logo from "../assets/nepal-sarkar.png";
 import API_URL from "../api/api";
-import { toast } from "react-toastify";
+import { notify } from "../utils/notify";
 import ComplaintPreview from "../components/complaint/ComplaintPreview";
 import {
   COMPLAINT_CATEGORIES,
@@ -21,6 +21,8 @@ const emptyAttachments = () => ({
   attachment_2: { file: null, previewUrl: null },
   attachment_3: { file: null, previewUrl: null },
 });
+
+const MAX_FILE_BYTES = 5 * 1024 * 1024;
 
 function Spinner() {
   return (
@@ -114,13 +116,15 @@ function FileComplaint() {
   }
 
   function handleAttachmentSelect(key, file) {
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("File must be under 5MB.");
+    if (file.size > MAX_FILE_BYTES) {
+      notify.error("File must be under 5MB.");
       return;
     }
     setAttachments((prev) => {
       const previewUrl =
         file.type === "application/pdf" ? "pdf" : URL.createObjectURL(file);
+      // Guard the "pdf" sentinel — it isn't a real object URL, and revoking
+      // it throws.
       if (prev[key]?.previewUrl && prev[key].previewUrl !== "pdf")
         URL.revokeObjectURL(prev[key].previewUrl);
       return { ...prev, [key]: { file, previewUrl } };
@@ -129,15 +133,15 @@ function FileComplaint() {
 
   function validate() {
     if (!formData.complaint_category) {
-      toast.error("Please select a category.");
+      notify.error("Please select a category.");
       return false;
     }
     if (formData.subject.trim().length < 5) {
-      toast.error("Subject must be at least 5 characters.");
+      notify.error("Subject must be at least 5 characters.");
       return false;
     }
     if (formData.description.trim().length < 20) {
-      toast.error(
+      notify.error(
         "Please describe the issue in more detail (min 20 characters).",
       );
       return false;
@@ -146,13 +150,19 @@ function FileComplaint() {
       categoryRequiresLocation(formData.complaint_category) &&
       !formData.location.trim()
     ) {
-      toast.error("Location is required for this category.");
+      notify.error("Location is required for this category.");
       return false;
     }
     return true;
   }
 
   function handleSubmit() {
+    // Re-validate here as well as before the preview. Submit is reachable
+    // directly from the preview screen, and the person can go back, edit a
+    // field into an invalid state, and return without re-triggering the
+    // preview check.
+    if (!validate()) return;
+
     setSubmitting(true);
     const body = new FormData();
     body.append("complaint_category", formData.complaint_category);
@@ -176,19 +186,21 @@ function FileComplaint() {
         }),
       )
       .then(() => {
-        toast.success("Complaint submitted successfully!");
+        notify.success("Complaint submitted successfully!");
         setFormData(initial_data);
         setAttachments(emptyAttachments());
         setShowPreview(false);
       })
       .catch((err) => {
-        console.error("Submission failed:", err);
-        toast.error(err?.detail || "Complaint submission failed.");
+        // notify.apiError unpacks FastAPI's `detail`, which is a LIST of
+        // validation objects for its own 422s and a plain string for our
+        // HTTPException calls — `err?.detail` alone renders [object Object].
+        notify.apiError(err, "Complaint submission failed.");
       })
       .finally(() => setSubmitting(false));
   }
 
-    const previewComplaint = {
+  const previewComplaint = {
     complaint_number: "—",
     complaint_category: formData.complaint_category,
     // Preview only — this record hasn't been submitted, so it has no real
@@ -230,7 +242,7 @@ function FileComplaint() {
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="bg-blue-300 hover:bg-slate-300 disabled:bg-blue-200 px-6 py-2 rounded-md cursor-pointer transition-colors flex items-center gap-2"
+            className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-6 py-2 rounded-md cursor-pointer transition-colors flex items-center gap-2"
           >
             {submitting ? (
               <>
@@ -247,12 +259,12 @@ function FileComplaint() {
 
   return (
     <form
-      required
       className="min-h-screen bg-gray-100 p-8 flex flex-col max-w-4xl mx-auto gap-4"
       onSubmit={(e) => {
         e.preventDefault();
         if (validate()) setShowPreview(true);
       }}
+      noValidate
     >
       <div>
         <div className="flex items-center gap-4 mb-6">
@@ -309,7 +321,6 @@ function FileComplaint() {
                 onChange={handleChange}
                 maxLength={200}
                 placeholder="Brief summary of the issue"
-                required
                 className="w-full border border-gray-300 rounded-lg p-3 outline-none transition-colors focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
               />
             </div>
@@ -323,7 +334,6 @@ function FileComplaint() {
                   value={formData.location}
                   onChange={handleChange}
                   placeholder="e.g. Ward 5, Balkumari Chowk"
-                  required
                   className="w-full border border-gray-300 rounded-lg p-3 outline-none transition-colors focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
                 />
               </div>
@@ -338,7 +348,6 @@ function FileComplaint() {
                 maxLength={3000}
                 rows={5}
                 placeholder="Describe what happened, when, and any relevant details"
-                required
                 className="w-full border border-gray-300 rounded-lg p-3 outline-none transition-colors focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
               />
               <p className="text-xs text-gray-400 mt-1 text-right">

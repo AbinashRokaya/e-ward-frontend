@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import ChildInfo from "../components/birthregistration-component/ChildInfo";
 import logo from "../assets/nepal-sarkar.png";
 import FatherInfo from "../components/birthregistration-component/FatherInfo";
@@ -6,9 +6,12 @@ import MotherInfo from "../components/birthregistration-component/MotherInfo";
 import AddressInfo from "../components/birthregistration-component/AddressInfo";
 import InformantInfo from "../components/birthregistration-component/InformantInfo";
 import Preview from "../components/Preview";
-import { birthRegistrationSchema } from "../validation/birth-certificate-validation";
+import {
+  validateBirthRegistration,
+  birthRegistrationWarnings,
+} from "../validation/birth-certificate-validation";
 import API_URL from "../api/api";
-import { toast } from "react-toastify";
+import { notify } from "../utils/notify";
 
 let inital_data = {
   register_ward_id: "",
@@ -25,7 +28,9 @@ let inital_data = {
     child_time_of_birth: "",
     child_birth_place: "",
     child_birth_kind: "",
-    child_weight_kg: 0,
+    // Empty rather than 0 — weight is optional, and 0 would both display as a
+    // real value and trip the "must be greater than 0" rule on submit.
+    child_weight_kg: "",
   },
   parents: [
     {
@@ -76,7 +81,7 @@ let inital_data = {
     child_province: "",
     child_district: "",
     child_municipality: "",
-    child_ward_number: 0,
+    child_ward_number: "",
     child_tole: "",
     ward_nepali_name: "",
     ward_nepali_municipality: "",
@@ -119,6 +124,8 @@ const DOCUMENT_FIELDS = [
   },
   { key: "vaccination_card", label: "खोप कार्ड (Vaccination Card)" },
 ];
+
+const MAX_FILE_BYTES = 5 * 1024 * 1024;
 
 function Spinner() {
   return (
@@ -181,6 +188,9 @@ function DocumentUploads({ documents, onSelect }) {
     <div className="md:col-span-2 mt-2 pt-4 border-t border-gray-100">
       <h3 className="text-sm font-semibold text-gray-700 mb-3">
         सहयोगी कागजातहरू (Supporting Documents)
+        <span className="text-xs text-gray-400 font-normal ml-2">
+          (max 5MB each)
+        </span>
       </h3>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {DOCUMENT_FIELDS.map((field) => {
@@ -200,9 +210,7 @@ function DocumentUploads({ documents, onSelect }) {
                     label="अगाडि (Front)"
                     previewUrl={front?.previewUrl}
                     isPdf={front?.file?.type === "application/pdf"}
-                    onFileSelected={(file) =>
-                      onSelect(field.key, file, "front")
-                    }
+                    onFileSelected={(file) => onSelect(field.key, file, "front")}
                   />
                   <UploadTile
                     label="पछाडि (Back)"
@@ -247,13 +255,21 @@ function BirthRegistration({ wards }) {
   }
 
   function handleDocumentSelect(key, file, side) {
+    // Reject oversized files at selection time rather than letting the whole
+    // multi-megabyte submission fail after the person has filled everything in.
+    if (file.size > MAX_FILE_BYTES) {
+      notify.error("File must be under 5MB.");
+      return;
+    }
+
     setDocuments((prev) => {
       const previewUrl =
         file.type === "application/pdf" ? "pdf" : URL.createObjectURL(file);
 
       if (side) {
         const prevSlot = prev[key]?.[side];
-        if (prevSlot?.previewUrl) URL.revokeObjectURL(prevSlot.previewUrl);
+        if (prevSlot?.previewUrl && prevSlot.previewUrl !== "pdf")
+          URL.revokeObjectURL(prevSlot.previewUrl);
         return {
           ...prev,
           [key]: {
@@ -263,7 +279,8 @@ function BirthRegistration({ wards }) {
         };
       }
 
-      if (prev[key]?.previewUrl) URL.revokeObjectURL(prev[key].previewUrl);
+      if (prev[key]?.previewUrl && prev[key].previewUrl !== "pdf")
+        URL.revokeObjectURL(prev[key].previewUrl);
       return {
         ...prev,
         [key]: { file, previewUrl },
@@ -273,6 +290,17 @@ function BirthRegistration({ wards }) {
 
   function handleSubmit(e) {
     e.preventDefault();
+
+    // Validate before hitting the network. The schema was previously imported
+    // but never called, so invalid data went straight to the backend and came
+    // back as a raw 422 the person couldn't act on.
+    const errors = validateBirthRegistration(formData);
+    if (notify.firstError(errors)) return;
+
+    // Non-blocking — unusual but legitimate values (high birth weight, late
+    // registration) get flagged without stopping a real submission.
+    birthRegistrationWarnings(formData).forEach((w) => notify.warn(w));
+
     setSubmitting(true);
 
     const body = new FormData();
@@ -293,30 +321,36 @@ function BirthRegistration({ wards }) {
       }
     });
 
-    fetch(`${API_URL}/v1/birth-registration`, {
+    fetch(`${API_URL}/v1/birth-registration/`, {
       method: "POST",
       credentials: "include",
       body,
     })
-      .then((response) => {
-        return response.json().then((data) => {
-          if (!response.ok) {
-            throw data;
-          }
+      .then((response) =>
+        response.json().then((data) => {
+          if (!response.ok) throw data;
           return data;
-        });
-      })
-      .then((data) => {
-        console.log("Submission successful", data);
-        toast.success("Birth registration submitted successfully!");
+        }),
+      )
+      .then(() => {
+        notify.success("Birth registration submitted successfully!");
         setFormData(inital_data);
         setDocuments(emptyDocuments());
+        setShowPreview(false);
       })
       .catch((err) => {
         console.error("Submission failed:", err);
-        toast.error(err?.detail || "Birth registration submission failed.");
+        notify.error(err?.detail || "Birth registration submission failed.");
       })
       .finally(() => setSubmitting(false));
+  }
+
+  // Validate before showing the preview too — reviewing a certificate built
+  // from incomplete data just means finding the same problems twice.
+  function handlePreview() {
+    const errors = validateBirthRegistration(formData);
+    if (notify.firstError(errors)) return;
+    setShowPreview(true);
   }
 
   return (
@@ -339,12 +373,31 @@ function BirthRegistration({ wards }) {
           </div>
 
           <Preview formData={formData} documents={documents} />
+
+          {/* Submit from the preview as well — otherwise the person has to go
+              back to the form to do the thing they just finished reviewing. */}
+          <div className="flex justify-end mt-4">
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-6 py-2 rounded-md cursor-pointer transition-colors flex items-center gap-2"
+            >
+              {submitting ? (
+                <>
+                  <Spinner /> पेश गर्दै…
+                </>
+              ) : (
+                "Submit"
+              )}
+            </button>
+          </div>
         </div>
       ) : (
         <form
-          required
-          className="min-h-screen bg-gray-100 p-8 flex flex-col max-w-6xl mx-auto gap-4 "
+          className="min-h-screen bg-gray-100 p-8 flex flex-col max-w-6xl mx-auto gap-4"
           onSubmit={handleSubmit}
+          noValidate
         >
           <div>
             <div className="flex items-center gap-4 mb-6">
@@ -398,7 +451,7 @@ function BirthRegistration({ wards }) {
           <div className="flex justify-between items-center">
             <button
               type="button"
-              onClick={() => setShowPreview(true)}
+              onClick={handlePreview}
               className="bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium px-6 py-2 rounded-md cursor-pointer transition-colors"
             >
               👁️ Preview Certificate
@@ -406,7 +459,7 @@ function BirthRegistration({ wards }) {
             <button
               type="submit"
               disabled={submitting}
-              className="bg-blue-300 hover:bg-slate-300 disabled:bg-blue-200 px-6 py-2 rounded-md cursor-pointer transition-colors flex items-center gap-2"
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-6 py-2 rounded-md cursor-pointer transition-colors flex items-center gap-2"
             >
               {submitting ? (
                 <>
