@@ -9,6 +9,9 @@ function toNepaliNumber(value) {
   return String(value).replace(/[0-9]/g, (d) => NEPALI_DIGITS[d]);
 }
 
+// Maximum allowed child birth weight, in kilograms.
+const MAX_CHILD_WEIGHT_KG = 5;
+
 function normalize(raw = {}) {
   const child = raw.child || {};
   const address = raw.address || {};
@@ -45,6 +48,13 @@ function normalize(raw = {}) {
     raw.child_ward_number ?? address.child_ward_number ?? "";
   const sharedWard = toNepaliNumber(sharedWardRaw);
 
+  // Raw (untranslated) birth weight, used for numeric validation.
+  const rawWeight = raw.child_weight_kg ?? child.child_weight_kg ?? "";
+  const parsedWeight = parseFloat(rawWeight);
+  const hasWeight = rawWeight !== "" && rawWeight !== null && rawWeight !== undefined;
+  const isWeightValid =
+    !hasWeight || isNaN(parsedWeight) || parsedWeight <= MAX_CHILD_WEIGHT_KG;
+
   return {
     child_first_name:
       child.child_nepali_first_name ||
@@ -69,9 +79,11 @@ function normalize(raw = {}) {
     ),
     child_birth_place: raw.child_birth_place ?? child.child_birth_place ?? "",
     child_birth_kind: raw.child_birth_kind ?? child.child_birth_kind ?? "",
-    child_weight_kg: toNepaliNumber(
-      raw.child_weight_kg ?? child.child_weight_kg ?? "",
-    ),
+
+    // Birth weight: display value (Nepali digits), raw numeric value, and validity flag.
+    child_weight_kg: toNepaliNumber(rawWeight),
+    child_weight_kg_raw: hasWeight ? parsedWeight : null,
+    child_weight_valid: isWeightValid,
 
     child_province: sharedProvince,
     child_district: sharedDistrict,
@@ -264,6 +276,27 @@ function Birth_certificate({
           : "";
 
   const relationLabel = RELATION_LABELS[formData.nominee_relationship] || "";
+
+  // Birth weight display: red + bold + warning text if it exceeds the allowed max.
+  const weightValue = formData.child_weight_kg ? (
+    <span
+      style={{
+        color: formData.child_weight_valid ? "inherit" : "#c00",
+        fontWeight: formData.child_weight_valid ? "normal" : "bold",
+      }}
+    >
+      {formData.child_weight_kg} के.जी. (kg)
+      {!formData.child_weight_valid && (
+        <>
+          {" "}
+          ⚠ अमान्य तौल: ५ के.जी. भन्दा बढी हुन सक्दैन (Invalid: weight cannot
+          exceed 5 kg)
+        </>
+      )}
+    </span>
+  ) : (
+    ""
+  );
 
   // ── Fixed-proportion column widths so long address text never distorts
   // the layout — matches the official form's clean, evenly-spaced columns.
@@ -562,6 +595,10 @@ function Birth_certificate({
             value={birthPlaceLabel}
           />
           <Row label="जन्मको किसिम (Type of Birth)" value={birthKindLabel} />
+          <Row
+            label="जन्मको समयको तौल (Birth Weight)"
+            value={weightValue}
+          />
         </tbody>
       </table>
 
