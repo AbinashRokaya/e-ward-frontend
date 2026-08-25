@@ -48,33 +48,6 @@ const SOURCES = [
 // -----------------------------------------------------------------------------
 // APPROVAL CHAIN
 // -----------------------------------------------------------------------------
-//
-// Citizen
-//    ↓
-// Submitted
-//    ↓
-// Data Validation Officer
-//    ↓
-// Ward Secretary
-//    ↓
-// Ward Chairman
-//    ↓
-// Certificate Issued
-//
-// IMPORTANT:
-// The aliases below support both your CURRENT backend statuses and the
-// descriptive statuses we may use later.
-//
-// CURRENT backend:
-// APPROVED                  -> Data Validation Officer
-// VERIFIED                  -> Ward Secretary
-// FORWARDED_TO_CHAIRPERSON  -> Ward Chairman
-//
-// FUTURE / DESCRIPTIVE:
-// VALIDATION_OFFICER_VERIFIED
-// SECRETARY_VERIFIED
-// CHAIRMAN_VERIFIED
-// -----------------------------------------------------------------------------
 
 const STAGES = [
   {
@@ -84,7 +57,6 @@ const STAGES = [
     en: "Submitted",
     icon: "📤",
   },
-
   {
     key: "VALIDATION_OFFICER_VERIFIED",
     statuses: [
@@ -95,7 +67,6 @@ const STAGES = [
     en: "Verified by Data Validation Officer",
     icon: "🖥️",
   },
-
   {
     key: "SECRETARY_VERIFIED",
     statuses: [
@@ -106,7 +77,6 @@ const STAGES = [
     en: "Verified by Ward Secretary",
     icon: "🖊️",
   },
-
   {
     key: "CHAIRMAN_VERIFIED",
     statuses: [
@@ -117,7 +87,6 @@ const STAGES = [
     en: "Verified by Ward Chairman",
     icon: "🎖️",
   },
-
   {
     key: "CERTIFICATE_ISSUED",
     statuses: ["CERTIFICATE_ISSUED"],
@@ -135,52 +104,87 @@ const TERMINAL = {
   REJECTED: {
     ne: "अस्वीकृत",
     en: "Rejected",
-    className: "bg-red-50 text-red-700 border-red-200",
+    className:
+      "bg-red-50 text-red-700 border-red-200",
   },
 
   DOCUMENT_REQUESTED: {
     ne: "थप कागजात आवश्यक",
     en: "More documents needed",
-    className: "bg-amber-50 text-amber-800 border-amber-200",
+    className:
+      "bg-amber-50 text-amber-800 border-amber-200",
   },
 
   DRAFT: {
     ne: "मस्यौदा — पेश गरिएको छैन",
     en: "Draft — not yet submitted",
-    className: "bg-slate-100 text-slate-600 border-slate-200",
+    className:
+      "bg-slate-100 text-slate-600 border-slate-200",
   },
 
   RESOLVED: {
     ne: "समाधान भयो",
     en: "Resolved",
-    className: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    className:
+      "bg-emerald-50 text-emerald-700 border-emerald-200",
+  },
+
+  CANCELLED: {
+    ne: "रद्द गरिएको",
+    en: "Cancelled",
+    className:
+      "bg-gray-100 text-gray-700 border-gray-200",
+  },
+
+  COMPLETED: {
+    ne: "सम्पन्न",
+    en: "Completed",
+    className:
+      "bg-emerald-50 text-emerald-700 border-emerald-200",
   },
 };
 
 // -----------------------------------------------------------------------------
-// Extract list from API response
+// EXTRACT LIST FROM API RESPONSE
 // -----------------------------------------------------------------------------
 
 function extractList(payload) {
-  const data = payload?.data;
-
-  if (Array.isArray(data)) {
-    return data;
-  }
-
-  if (!data || typeof data !== "object") {
+  if (!payload) {
     return [];
   }
 
-  const firstArray = Object.values(data).find((value) =>
-    Array.isArray(value),
+  // Example:
+  // { data: [...] }
+  if (Array.isArray(payload.data)) {
+    return payload.data;
+  }
+
+  // Example:
+  // { data: { items: [...] } }
+  if (
+    payload.data &&
+    typeof payload.data === "object"
+  ) {
+    const firstArray = Object.values(
+      payload.data,
+    ).find((value) => Array.isArray(value));
+
+    if (firstArray) {
+      return firstArray;
+    }
+  }
+
+  // Example:
+  // { items: [...] }
+  const directArray = Object.values(payload).find(
+    (value) => Array.isArray(value),
   );
 
-  return firstArray || [];
+  return directArray || [];
 }
 
 // -----------------------------------------------------------------------------
-// Find current stage
+// GET CURRENT STAGE
 // -----------------------------------------------------------------------------
 
 function getStageIndex(status) {
@@ -194,7 +198,32 @@ function getStageIndex(status) {
 }
 
 // -----------------------------------------------------------------------------
-// Stage Tracker
+// FORMAT DATE
+// -----------------------------------------------------------------------------
+
+function formatDate(dateValue, isNepali) {
+  if (!dateValue) {
+    return "—";
+  }
+
+  const date = new Date(dateValue);
+
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+
+  return date.toLocaleDateString(
+    isNepali ? "ne-NP" : "en-US",
+    {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    },
+  );
+}
+
+// -----------------------------------------------------------------------------
+// STAGE TRACKER
 // -----------------------------------------------------------------------------
 
 function StageTracker({ status, isNepali }) {
@@ -202,61 +231,75 @@ function StageTracker({ status, isNepali }) {
 
   return (
     <div className="mt-4">
-      <div className="flex items-center gap-0.5 flex-wrap">
-        {STAGES.map((stage, index) => {
-          const done =
-            currentIndex >= 0 && index < currentIndex;
+      {/* Horizontal scroll on small screens */}
+      <div className="overflow-x-auto pb-1">
+        <div className="flex items-center min-w-max gap-1">
+          {STAGES.map((stage, index) => {
+            const done =
+              currentIndex >= 0 &&
+              index < currentIndex;
 
-          const current =
-            index === currentIndex;
+            const current =
+              index === currentIndex;
 
-          return (
-            <React.Fragment key={stage.key}>
-              <div
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-medium border transition-colors ${
-                  current
-                    ? "bg-blue-900 text-white border-blue-900"
-                    : done
-                      ? "bg-blue-50 text-blue-900 border-blue-100"
-                      : "bg-white text-slate-400 border-slate-200"
-                }`}
-                title={
-                  isNepali
-                    ? stage.en
-                    : stage.ne
-                }
-              >
-                <span aria-hidden="true">
-                  {done ? "✓" : stage.icon}
-                </span>
+            return (
+              <React.Fragment key={stage.key}>
+                <div
+                  className={`
+                    flex items-center gap-1.5
+                    px-2.5 py-1.5
+                    rounded-full
+                    text-[11px]
+                    font-medium
+                    border
+                    transition-colors
+                    ${
+                      current
+                        ? "bg-blue-900 text-white border-blue-900"
+                        : done
+                          ? "bg-blue-50 text-blue-900 border-blue-100"
+                          : "bg-white text-slate-400 border-slate-200"
+                    }
+                  `}
+                  title={
+                    isNepali
+                      ? stage.en
+                      : stage.ne
+                  }
+                >
+                  <span aria-hidden="true">
+                    {done ? "✓" : stage.icon}
+                  </span>
 
-                <span>
-                  {isNepali
-                    ? stage.ne
-                    : stage.en}
-                </span>
-              </div>
+                  <span>
+                    {isNepali
+                      ? stage.ne
+                      : stage.en}
+                  </span>
+                </div>
 
-              {index < STAGES.length - 1 && (
-                <span
-                  className={`w-3 h-px shrink-0 ${
-                    currentIndex >= 0 &&
-                    index < currentIndex
-                      ? "bg-blue-300"
-                      : "bg-slate-200"
-                  }`}
-                  aria-hidden="true"
-                />
-              )}
-            </React.Fragment>
-          );
-        })}
+                {index <
+                  STAGES.length - 1 && (
+                  <span
+                    className={`
+                      w-3 h-px shrink-0
+                      ${
+                        currentIndex >= 0 &&
+                        index < currentIndex
+                          ? "bg-blue-300"
+                          : "bg-slate-200"
+                      }
+                    `}
+                    aria-hidden="true"
+                  />
+                )}
+              </React.Fragment>
+            );
+          })}
+        </div>
       </div>
 
-      {/* ----------------------------------------------------------------- */}
-      {/* Current responsible officer                                      */}
-      {/* ----------------------------------------------------------------- */}
-
+      {/* Current stage */}
       {currentIndex >= 0 && (
         <div className="mt-3 px-3 py-2 rounded-lg bg-blue-50 border border-blue-100">
           <p className="text-xs font-semibold text-blue-900">
@@ -271,127 +314,264 @@ function StageTracker({ status, isNepali }) {
 }
 
 // -----------------------------------------------------------------------------
-// Main Component
+// STATUS BADGE
+// -----------------------------------------------------------------------------
+
+function StatusBadge({ status, isNepali }) {
+  const terminal = TERMINAL[status];
+
+  if (!terminal) {
+    return null;
+  }
+
+  return (
+    <span
+      className={`
+        text-xs
+        font-semibold
+        px-3
+        py-1
+        rounded-full
+        border
+        shrink-0
+        ${terminal.className}
+      `}
+    >
+      {isNepali
+        ? terminal.ne
+        : terminal.en}
+    </span>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// SINGLE APPLICATION CARD
+// -----------------------------------------------------------------------------
+
+function ApplicationCard({
+  document,
+  isNepali,
+}) {
+  const currentStageIndex =
+    getStageIndex(document.status);
+
+  const inApprovalChain =
+    currentStageIndex !== -1;
+
+  const terminal =
+    TERMINAL[document.status];
+
+  return (
+    <div className="p-4 border border-slate-200 rounded-xl bg-slate-50/60 hover:bg-slate-50 transition-colors">
+      {/* Application Header */}
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-bold text-slate-800">
+            {isNepali
+              ? document.labelNe
+              : document.labelEn}
+          </h3>
+
+          <p className="text-xs text-slate-500 mt-1">
+            {isNepali
+              ? "आवेदन मिति: "
+              : "Applied: "}
+
+            {formatDate(
+              document.created_at,
+              isNepali,
+            )}
+          </p>
+
+          {document.id && (
+            <p className="text-[11px] text-slate-400 mt-1 break-all">
+              {isNepali
+                ? "आवेदन नं.: "
+                : "Application ID: "}
+
+              {document.id}
+            </p>
+          )}
+        </div>
+
+        <StatusBadge
+          status={document.status}
+          isNepali={isNepali}
+        />
+      </div>
+
+      {/* Approval Chain */}
+      {inApprovalChain ? (
+        <StageTracker
+          status={document.status}
+          isNepali={isNepali}
+        />
+      ) : !terminal ? (
+        <div className="mt-3 p-2.5 rounded-lg bg-slate-100 border border-slate-200">
+          <p className="text-xs text-slate-500">
+            {isNepali
+              ? "स्थिति उपलब्ध छैन"
+              : "Status unavailable"}
+
+            {document.status
+              ? ` (${document.status})`
+              : ""}
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// MAIN COMPONENT
 // -----------------------------------------------------------------------------
 
 export default function MyDocuments() {
-  const { language } = useLanguage() || {};
+  const { language } =
+    useLanguage() || {};
 
-  const isNepali = language !== "en";
+  const isNepali =
+    language !== "en";
 
-  const [documents, setDocuments] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [failedSources, setFailedSources] = useState([]);
+  const [documents, setDocuments] =
+    useState([]);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [failedSources, setFailedSources] =
+    useState([]);
 
   // ---------------------------------------------------------------------------
-  // Load applications
+  // LOAD ALL APPLICATIONS
   // ---------------------------------------------------------------------------
 
   useEffect(() => {
     let cancelled = false;
 
-    const loadDocuments = async () => {
+    async function loadDocuments() {
       setLoading(true);
 
       const failed = [];
 
-      const results = await Promise.all(
-        SOURCES.map(async (source) => {
-          try {
-            const response = await fetch(
-              `${API_URL}${source.path}`,
-              {
-                method: "GET",
-                credentials: "include",
-              },
-            );
-
-            if (!response.ok) {
-              let errorData = null;
-
+      const results =
+        await Promise.all(
+          SOURCES.map(
+            async (source) => {
               try {
-                errorData = await response.json();
-              } catch {
-                // Response may not contain JSON.
+                const response =
+                  await fetch(
+                    `${API_URL}${source.path}`,
+                    {
+                      method: "GET",
+                      credentials: "include",
+                    },
+                  );
+
+                let payload = null;
+
+                try {
+                  payload =
+                    await response.json();
+                } catch {
+                  payload = null;
+                }
+
+                if (!response.ok) {
+                  const error =
+                    new Error(
+                      `HTTP ${response.status}`,
+                    );
+
+                  if (payload) {
+                    error.detail =
+                      payload.detail;
+                  }
+
+                  throw error;
+                }
+
+                const records =
+                  extractList(payload);
+
+                return records
+                  .filter(
+                    (record) =>
+                      record &&
+                      typeof record ===
+                        "object",
+                  )
+                  .map((record) => ({
+                    id:
+                      record[
+                        source.idKey
+                      ],
+
+                    labelNe:
+                      source.labelNe,
+
+                    labelEn:
+                      source.labelEn,
+
+                    status:
+                      record[
+                        source.statusKey
+                      ],
+
+                    created_at:
+                      record.created_at,
+                  }));
+              } catch (error) {
+                console.error(
+                  `Failed to load ${source.path}:`,
+                  error,
+                );
+
+                failed.push(source);
+
+                return [];
               }
-
-              const error = new Error(
-                `HTTP ${response.status}`,
-              );
-
-              if (errorData) {
-                error.detail =
-                  errorData.detail;
-              }
-
-              throw error;
-            }
-
-            const payload =
-              await response.json();
-
-            const records =
-              extractList(payload);
-
-            return records.map((record) => ({
-              id: record[source.idKey],
-
-              labelNe:
-                source.labelNe,
-
-              labelEn:
-                source.labelEn,
-
-              status:
-                record[source.statusKey],
-
-              created_at:
-                record.created_at,
-            }));
-          } catch (error) {
-            console.error(
-              `Failed to load ${source.path}:`,
-              error,
-            );
-
-            failed.push(source);
-
-            return [];
-          }
-        }),
-      );
+            },
+          ),
+        );
 
       if (cancelled) {
         return;
       }
 
       // -----------------------------------------------------------------------
-      // Merge and sort applications
+      // MERGE + SORT
       // -----------------------------------------------------------------------
 
-      const merged = results
-        .flat()
-        .sort((a, b) => {
-          if (!a.created_at) {
-            return 1;
-          }
+      const merged =
+        results
+          .flat()
+          .sort((a, b) => {
+            if (!a.created_at) {
+              return 1;
+            }
 
-          if (!b.created_at) {
-            return -1;
-          }
+            if (!b.created_at) {
+              return -1;
+            }
 
-          return (
-            new Date(b.created_at) -
-            new Date(a.created_at)
-          );
-        });
+            return (
+              new Date(
+                b.created_at,
+              ) -
+              new Date(
+                a.created_at,
+              )
+            );
+          });
 
       setDocuments(merged);
       setFailedSources(failed);
       setLoading(false);
 
       // -----------------------------------------------------------------------
-      // Notify about failed modules
+      // PARTIAL FAILURE NOTIFICATION
       // -----------------------------------------------------------------------
 
       if (failed.length > 0) {
@@ -412,29 +592,31 @@ export default function MyDocuments() {
               )}. Some applications may be missing.`,
         );
       }
-    };
+    }
 
-    loadDocuments().catch((error) => {
-      if (cancelled) {
-        return;
-      }
+    loadDocuments().catch(
+      (error) => {
+        if (cancelled) {
+          return;
+        }
 
-      console.error(
-        "Error fetching applications:",
-        error,
-      );
+        console.error(
+          "Error fetching applications:",
+          error,
+        );
 
-      setDocuments([]);
-      setFailedSources(SOURCES);
-      setLoading(false);
+        setDocuments([]);
+        setFailedSources(SOURCES);
+        setLoading(false);
 
-      notify.loadFailed(
-        isNepali
-          ? "तपाईंका आवेदनहरू"
-          : "your applications",
-        error,
-      );
-    });
+        notify.loadFailed(
+          isNepali
+            ? "तपाईंका आवेदनहरू"
+            : "your applications",
+          error,
+        );
+      },
+    );
 
     return () => {
       cancelled = true;
@@ -442,16 +624,12 @@ export default function MyDocuments() {
   }, [isNepali]);
 
   // ---------------------------------------------------------------------------
-  // Render
+  // RENDER
   // ---------------------------------------------------------------------------
 
   return (
     <section className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-
-      {/* ----------------------------------------------------------------- */}
-      {/* Header                                                           */}
-      {/* ----------------------------------------------------------------- */}
-
+      {/* Header */}
       <div className="mb-5 pb-3 border-b border-slate-100">
         <h2 className="text-lg font-bold text-slate-800">
           {isNepali
@@ -466,10 +644,7 @@ export default function MyDocuments() {
         </p>
       </div>
 
-      {/* ----------------------------------------------------------------- */}
-      {/* Partial Failure Warning                                          */}
-      {/* ----------------------------------------------------------------- */}
-
+      {/* Partial Failure Warning */}
       {!loading &&
         failedSources.length > 0 && (
           <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200">
@@ -514,10 +689,7 @@ export default function MyDocuments() {
           </div>
         )}
 
-      {/* ----------------------------------------------------------------- */}
-      {/* Loading                                                          */}
-      {/* ----------------------------------------------------------------- */}
-
+      {/* Loading */}
       {loading ? (
         <div className="flex items-center gap-2 text-sm text-slate-500 py-4">
           <div className="w-4 h-4 border-2 border-slate-300 border-t-blue-900 rounded-full animate-spin" />
@@ -529,11 +701,7 @@ export default function MyDocuments() {
           </span>
         </div>
       ) : documents.length === 0 ? (
-
-        /* --------------------------------------------------------------- */
-        /* Empty State                                                     */
-        /* --------------------------------------------------------------- */
-
+        /* Empty State */
         <div className="p-8 text-center border border-dashed border-slate-300 rounded-xl">
           <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-2xl mb-3 mx-auto">
             {failedSources.length ===
@@ -586,108 +754,20 @@ export default function MyDocuments() {
           )}
         </div>
       ) : (
-
-        /* --------------------------------------------------------------- */
-        /* Application List                                                */
-        /* --------------------------------------------------------------- */
-
+        /* Application List */
         <div className="space-y-3">
-          {documents.map((doc, index) => {
-            const terminal =
-              TERMINAL[doc.status];
-
-            const currentStageIndex =
-              getStageIndex(doc.status);
-
-            const inChain =
-              currentStageIndex !== -1;
-
-            return (
-              <div
-                key={doc.id || index}
-                className="p-4 border border-slate-200 rounded-xl bg-slate-50/60"
-              >
-
-                {/* ------------------------------------------------------- */}
-                {/* Application Header                                      */}
-                {/* ------------------------------------------------------- */}
-
-                <div className="flex justify-between items-start gap-4">
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-800">
-                      {isNepali
-                        ? doc.labelNe
-                        : doc.labelEn}
-                    </h3>
-
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      {isNepali
-                        ? "आवेदन मिति: "
-                        : "Applied: "}
-
-                      {doc.created_at
-                        ? new Date(
-                            doc.created_at,
-                          ).toLocaleDateString()
-                        : "—"}
-                    </p>
-
-                    {/* Application ID */}
-                    {doc.id && (
-                      <p className="text-[11px] text-slate-400 mt-1">
-                        {isNepali
-                          ? "आवेदन नं.: "
-                          : "Application ID: "}
-                        {doc.id}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* ----------------------------------------------------- */}
-                  {/* Terminal Status Badge                                */}
-                  {/* ----------------------------------------------------- */}
-
-                  {terminal && (
-                    <span
-                      className={`text-xs font-semibold px-3 py-1 rounded-full border shrink-0 ${terminal.className}`}
-                    >
-                      {isNepali
-                        ? terminal.ne
-                        : terminal.en}
-                    </span>
-                  )}
-                </div>
-
-                {/* ------------------------------------------------------- */}
-                {/* Approval Chain                                          */}
-                {/* ------------------------------------------------------- */}
-
-                {inChain ? (
-                  <StageTracker
-                    status={doc.status}
-                    isNepali={isNepali}
-                  />
-                ) : !terminal ? (
-
-                  /* ----------------------------------------------------- */
-                  /* Unknown Status                                        */
-                  /* ----------------------------------------------------- */
-
-                  <div className="mt-3 p-2.5 rounded-lg bg-slate-100 border border-slate-200">
-                    <p className="text-xs text-slate-500">
-                      {isNepali
-                        ? "स्थिति उपलब्ध छैन"
-                        : "Status unavailable"}
-
-                      {doc.status
-                        ? ` (${doc.status})`
-                        : ""}
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
+          {documents.map(
+            (document, index) => (
+              <ApplicationCard
+                key={
+                  document.id ||
+                  `${document.labelEn}-${index}`
+                }
+                document={document}
+                isNepali={isNepali}
+              />
+            ),
+          )}
         </div>
       )}
     </section>
