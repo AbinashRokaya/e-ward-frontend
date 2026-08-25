@@ -2,9 +2,29 @@ import { useEffect, useState } from "react";
 import { toast } from "react-toastify";
 import API_URL from "../../api/api";
 
-// static/ is mounted directly by the backend (same folder issue_tax_receipt
-// writes qr/pdf into) — adjust if your app.mount() prefix differs.
-const STATIC_BASE = `${API_URL}/static`;
+// ── URL builder ──────────────────────────────────────────────────────────
+// receipt.pdf_path / receipt.qr_path may be either:
+//   1. A full Cloudinary secure_url — https://res.cloudinary.com/... —
+//      what tax_receipt_service.py stores for every receipt issued after
+//      the Cloudinary migration.
+//   2. A legacy path relative to the backend's static/ mount, from before
+//      that migration.
+//
+// FIX: this file previously built the receipt URL by unconditionally
+// prefixing pdf_path with `${API_URL}/static/` — fine for case 2, but for
+// case 1 it produced `https://<backend>/static/https://res.cloudinary.com/...`,
+// which doesn't match any FastAPI route. That falls through to the
+// backend's default 404 handler, returning the raw body
+// {"detail":"Not Found"} — which is what the receipt <iframe> below was
+// loading and Chrome was rendering with its native JSON viewer.
+//
+// Same fix as buildStaticUrl() in RecommendationPreview.jsx: use a full
+// URL as-is, only prefix a genuinely relative legacy path.
+function buildStaticUrl(path) {
+  if (!path) return null;
+  if (path.startsWith("http://") || path.startsWith("https://")) return path;
+  return `${API_URL}/static/${path}`;
+}
 
 const STATUS_STYLES = {
   ASSESSED: "bg-blue-100 text-blue-800",
@@ -166,6 +186,14 @@ export default function MyTaxDashboard() {
     .filter((a) => a.status !== "PAID")
     .reduce((sum, a) => sum + a.total_due, 0);
 
+  // Built once from whatever's currently open in the modal — the single
+  // place that has to know about the Cloudinary-vs-legacy distinction,
+  // instead of every usage site (download link, iframe) building its own
+  // string inline.
+  const receiptPdfUrl = viewingReceipt
+    ? buildStaticUrl(viewingReceipt.pdf_path)
+    : null;
+
   return (
     <div className="max-w-4xl mx-auto p-6">
       <h1 className="text-2xl font-bold text-gray-900 mb-1">My Tax</h1>
@@ -319,9 +347,9 @@ export default function MyTaxDashboard() {
                 </div>
               </div>
               <div className="flex gap-3">
-                {viewingReceipt.pdf_path && (
+                {receiptPdfUrl && (
                   <a
-                    href={`${STATIC_BASE}/${viewingReceipt.pdf_path}`}
+                    href={receiptPdfUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-sm font-medium text-green-700 hover:text-green-800"
@@ -337,9 +365,9 @@ export default function MyTaxDashboard() {
                 </button>
               </div>
             </div>
-            {viewingReceipt.pdf_path ? (
+            {receiptPdfUrl ? (
               <iframe
-                src={`${STATIC_BASE}/${viewingReceipt.pdf_path}`}
+                src={receiptPdfUrl}
                 title="Tax Receipt"
                 className="flex-1 w-full"
               />
