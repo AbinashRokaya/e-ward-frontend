@@ -6,13 +6,6 @@ import { notify } from "../../utils/notify";
 // -----------------------------------------------------------------------------
 // APPLICATION SOURCES
 // -----------------------------------------------------------------------------
-// Each module has its own citizen-scoped endpoint.
-// We fetch all five in parallel and merge the results.
-//
-// If one module fails, the other modules can still be displayed.
-// The failed module is tracked separately so the citizen knows the list
-// may be incomplete.
-// -----------------------------------------------------------------------------
 
 const SOURCES = [
   {
@@ -55,57 +48,87 @@ const SOURCES = [
 // -----------------------------------------------------------------------------
 // APPROVAL CHAIN
 // -----------------------------------------------------------------------------
-// Citizen submits
-//       ↓
-// Data validation / operator
-//       ↓
-// Secretary
-//       ↓
-// Chairperson
-//       ↓
-// Certificate issued
+//
+// Citizen
+//    ↓
+// Submitted
+//    ↓
+// Data Validation Officer
+//    ↓
+// Ward Secretary
+//    ↓
+// Ward Chairman
+//    ↓
+// Certificate Issued
 //
 // IMPORTANT:
-// Verify these enum values against your backend.
+// The aliases below support both your CURRENT backend statuses and the
+// descriptive statuses we may use later.
+//
+// CURRENT backend:
+// APPROVED                  -> Data Validation Officer
+// VERIFIED                  -> Ward Secretary
+// FORWARDED_TO_CHAIRPERSON  -> Ward Chairman
+//
+// FUTURE / DESCRIPTIVE:
+// VALIDATION_OFFICER_VERIFIED
+// SECRETARY_VERIFIED
+// CHAIRMAN_VERIFIED
 // -----------------------------------------------------------------------------
 
 const STAGES = [
   {
-    status: "SUBMITTED",
+    key: "SUBMITTED",
+    statuses: ["SUBMITTED"],
     ne: "पेश गरियो",
     en: "Submitted",
     icon: "📤",
   },
+
   {
-    status: "APPROVED",
-    ne: "सञ्चालकद्वारा प्रमाणित",
-    en: "Verified by Operator",
+    key: "VALIDATION_OFFICER_VERIFIED",
+    statuses: [
+      "VALIDATION_OFFICER_VERIFIED",
+      "APPROVED",
+    ],
+    ne: "डाटा प्रमाणीकरण अधिकृतद्वारा प्रमाणित",
+    en: "Verified by Data Validation Officer",
     icon: "🖥️",
   },
+
   {
-    status: "VERIFIED",
-    ne: "सचिवद्वारा प्रमाणित",
-    en: "Verified by Secretary",
+    key: "SECRETARY_VERIFIED",
+    statuses: [
+      "SECRETARY_VERIFIED",
+      "VERIFIED",
+    ],
+    ne: "वडा सचिवद्वारा प्रमाणित",
+    en: "Verified by Ward Secretary",
     icon: "🖊️",
   },
+
   {
-    status: "FORWARDED_TO_CHAIRPERSON",
-    ne: "अध्यक्षद्वारा प्रमाणित",
-    en: "Verified by Chairman",
+    key: "CHAIRMAN_VERIFIED",
+    statuses: [
+      "CHAIRMAN_VERIFIED",
+      "FORWARDED_TO_CHAIRPERSON",
+    ],
+    ne: "वडा अध्यक्षद्वारा प्रमाणित",
+    en: "Verified by Ward Chairman",
     icon: "🎖️",
   },
+
   {
-    status: "CERTIFICATE_ISSUED",
-    ne: "अन्तिम स्वीकृत — प्रमाणपत्र जारी",
-    en: "Fully Verified — Certificate Issued",
+    key: "CERTIFICATE_ISSUED",
+    statuses: ["CERTIFICATE_ISSUED"],
+    ne: "प्रमाणपत्र जारी",
+    en: "Certificate Issued",
     icon: "✅",
   },
 ];
 
 // -----------------------------------------------------------------------------
 // TERMINAL STATUSES
-// -----------------------------------------------------------------------------
-// These statuses don't belong to the normal approval chain.
 // -----------------------------------------------------------------------------
 
 const TERMINAL = {
@@ -137,16 +160,6 @@ const TERMINAL = {
 // -----------------------------------------------------------------------------
 // Extract list from API response
 // -----------------------------------------------------------------------------
-// Different endpoints may return:
-// { data: [...] }
-//
-// or:
-// { data: { records: [...] } }
-//
-// or another object containing an array.
-//
-// This helper safely extracts the first available array.
-// -----------------------------------------------------------------------------
 
 function extractList(payload) {
   const data = payload?.data;
@@ -167,54 +180,92 @@ function extractList(payload) {
 }
 
 // -----------------------------------------------------------------------------
+// Find current stage
+// -----------------------------------------------------------------------------
+
+function getStageIndex(status) {
+  if (!status) {
+    return -1;
+  }
+
+  return STAGES.findIndex((stage) =>
+    stage.statuses.includes(status),
+  );
+}
+
+// -----------------------------------------------------------------------------
 // Stage Tracker
 // -----------------------------------------------------------------------------
 
 function StageTracker({ status, isNepali }) {
-  const currentIndex = STAGES.findIndex(
-    (stage) => stage.status === status,
-  );
+  const currentIndex = getStageIndex(status);
 
   return (
-    <div className="mt-3 flex items-center gap-0.5 flex-wrap">
-      {STAGES.map((stage, index) => {
-        const done =
-          currentIndex >= 0 && index < currentIndex;
+    <div className="mt-4">
+      <div className="flex items-center gap-0.5 flex-wrap">
+        {STAGES.map((stage, index) => {
+          const done =
+            currentIndex >= 0 && index < currentIndex;
 
-        const current = index === currentIndex;
+          const current =
+            index === currentIndex;
 
-        return (
-          <React.Fragment key={stage.status}>
-            <div
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors ${
-                current
-                  ? "bg-blue-900 text-white border-blue-900"
-                  : done
-                    ? "bg-blue-50 text-blue-900 border-blue-100"
-                    : "bg-white text-slate-400 border-slate-200"
-              }`}
-              title={isNepali ? stage.en : stage.ne}
-            >
-              <span aria-hidden="true">
-                {done ? "✓" : stage.icon}
-              </span>
-
-              <span>
-                {isNepali ? stage.ne : stage.en}
-              </span>
-            </div>
-
-            {index < STAGES.length - 1 && (
-              <span
-                className={`w-3 h-px shrink-0 ${
-                  done ? "bg-blue-300" : "bg-slate-200"
+          return (
+            <React.Fragment key={stage.key}>
+              <div
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-medium border transition-colors ${
+                  current
+                    ? "bg-blue-900 text-white border-blue-900"
+                    : done
+                      ? "bg-blue-50 text-blue-900 border-blue-100"
+                      : "bg-white text-slate-400 border-slate-200"
                 }`}
-                aria-hidden="true"
-              />
-            )}
-          </React.Fragment>
-        );
-      })}
+                title={
+                  isNepali
+                    ? stage.en
+                    : stage.ne
+                }
+              >
+                <span aria-hidden="true">
+                  {done ? "✓" : stage.icon}
+                </span>
+
+                <span>
+                  {isNepali
+                    ? stage.ne
+                    : stage.en}
+                </span>
+              </div>
+
+              {index < STAGES.length - 1 && (
+                <span
+                  className={`w-3 h-px shrink-0 ${
+                    currentIndex >= 0 &&
+                    index < currentIndex
+                      ? "bg-blue-300"
+                      : "bg-slate-200"
+                  }`}
+                  aria-hidden="true"
+                />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
+
+      {/* ----------------------------------------------------------------- */}
+      {/* Current responsible officer                                      */}
+      {/* ----------------------------------------------------------------- */}
+
+      {currentIndex >= 0 && (
+        <div className="mt-3 px-3 py-2 rounded-lg bg-blue-50 border border-blue-100">
+          <p className="text-xs font-semibold text-blue-900">
+            {isNepali
+              ? `हालको चरण: ${STAGES[currentIndex].ne}`
+              : `Current stage: ${STAGES[currentIndex].en}`}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -230,8 +281,6 @@ export default function MyDocuments() {
 
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  // Stores the modules whose API request failed.
   const [failedSources, setFailedSources] = useState([]);
 
   // ---------------------------------------------------------------------------
@@ -257,7 +306,6 @@ export default function MyDocuments() {
               },
             );
 
-            // Don't silently treat HTTP errors as empty results.
             if (!response.ok) {
               let errorData = null;
 
@@ -272,22 +320,33 @@ export default function MyDocuments() {
               );
 
               if (errorData) {
-                error.detail = errorData.detail;
+                error.detail =
+                  errorData.detail;
               }
 
               throw error;
             }
 
-            const payload = await response.json();
+            const payload =
+              await response.json();
 
-            const records = extractList(payload);
+            const records =
+              extractList(payload);
 
             return records.map((record) => ({
               id: record[source.idKey],
-              labelNe: source.labelNe,
-              labelEn: source.labelEn,
-              status: record[source.statusKey],
-              created_at: record.created_at,
+
+              labelNe:
+                source.labelNe,
+
+              labelEn:
+                source.labelEn,
+
+              status:
+                record[source.statusKey],
+
+              created_at:
+                record.created_at,
             }));
           } catch (error) {
             console.error(
@@ -307,15 +366,19 @@ export default function MyDocuments() {
       }
 
       // -----------------------------------------------------------------------
-      // Merge all successful results
+      // Merge and sort applications
       // -----------------------------------------------------------------------
 
       const merged = results
         .flat()
         .sort((a, b) => {
-          if (!a.created_at) return 1;
+          if (!a.created_at) {
+            return 1;
+          }
 
-          if (!b.created_at) return -1;
+          if (!b.created_at) {
+            return -1;
+          }
 
           return (
             new Date(b.created_at) -
@@ -328,13 +391,16 @@ export default function MyDocuments() {
       setLoading(false);
 
       // -----------------------------------------------------------------------
-      // Notify user about failed modules
+      // Notify about failed modules
       // -----------------------------------------------------------------------
 
       if (failed.length > 0) {
-        const failedNames = failed.map((source) =>
-          isNepali ? source.labelNe : source.labelEn,
-        );
+        const failedNames =
+          failed.map((source) =>
+            isNepali
+              ? source.labelNe
+              : source.labelEn,
+          );
 
         notify.error(
           isNepali
@@ -381,9 +447,10 @@ export default function MyDocuments() {
 
   return (
     <section className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-      {/* ------------------------------------------------------------------- */}
-      {/* Header */}
-      {/* ------------------------------------------------------------------- */}
+
+      {/* ----------------------------------------------------------------- */}
+      {/* Header                                                           */}
+      {/* ----------------------------------------------------------------- */}
 
       <div className="mb-5 pb-3 border-b border-slate-100">
         <h2 className="text-lg font-bold text-slate-800">
@@ -399,50 +466,57 @@ export default function MyDocuments() {
         </p>
       </div>
 
-      {/* ------------------------------------------------------------------- */}
-      {/* Partial Failure Warning */}
-      {/* ------------------------------------------------------------------- */}
+      {/* ----------------------------------------------------------------- */}
+      {/* Partial Failure Warning                                          */}
+      {/* ----------------------------------------------------------------- */}
 
-      {!loading && failedSources.length > 0 && (
-        <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200">
-          <div className="flex items-start gap-2">
-            <span
-              className="text-base shrink-0"
-              aria-hidden="true"
-            >
-              ⚠️
-            </span>
+      {!loading &&
+        failedSources.length > 0 && (
+          <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200">
+            <div className="flex items-start gap-2">
+              <span
+                className="text-base shrink-0"
+                aria-hidden="true"
+              >
+                ⚠️
+              </span>
 
-            <div>
-              <p className="text-xs font-semibold text-amber-800">
-                {isNepali
-                  ? "केही जानकारी लोड हुन सकेन"
-                  : "Some information could not be loaded"}
-              </p>
+              <div>
+                <p className="text-xs font-semibold text-amber-800">
+                  {isNepali
+                    ? "केही जानकारी लोड हुन सकेन"
+                    : "Some information could not be loaded"}
+                </p>
 
-              <p className="text-xs text-amber-700 mt-1">
-                {isNepali
-                  ? `यी सेवाहरूको जानकारी उपलब्ध छैन: ${failedSources
-                      .map((source) => source.labelNe)
-                      .join(", ")}।`
-                  : `The following services could not be loaded: ${failedSources
-                      .map((source) => source.labelEn)
-                      .join(", ")}.`}
-              </p>
+                <p className="text-xs text-amber-700 mt-1">
+                  {isNepali
+                    ? `यी सेवाहरूको जानकारी उपलब्ध छैन: ${failedSources
+                        .map(
+                          (source) =>
+                            source.labelNe,
+                        )
+                        .join(", ")}।`
+                    : `The following services could not be loaded: ${failedSources
+                        .map(
+                          (source) =>
+                            source.labelEn,
+                        )
+                        .join(", ")}.`}
+                </p>
 
-              <p className="text-[11px] text-amber-600 mt-1">
-                {isNepali
-                  ? "तल देखाइएको आवेदन सूची अपूर्ण हुन सक्छ।"
-                  : "The application list shown below may be incomplete."}
-              </p>
+                <p className="text-[11px] text-amber-600 mt-1">
+                  {isNepali
+                    ? "तल देखाइएको आवेदन सूची अपूर्ण हुन सक्छ।"
+                    : "The application list shown below may be incomplete."}
+                </p>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* ------------------------------------------------------------------- */}
-      {/* Loading */}
-      {/* ------------------------------------------------------------------- */}
+      {/* ----------------------------------------------------------------- */}
+      {/* Loading                                                          */}
+      {/* ----------------------------------------------------------------- */}
 
       {loading ? (
         <div className="flex items-center gap-2 text-sm text-slate-500 py-4">
@@ -455,18 +529,21 @@ export default function MyDocuments() {
           </span>
         </div>
       ) : documents.length === 0 ? (
-        /* ----------------------------------------------------------------- */
-        /* Empty State                                                       */
-        /* ----------------------------------------------------------------- */
+
+        /* --------------------------------------------------------------- */
+        /* Empty State                                                     */
+        /* --------------------------------------------------------------- */
 
         <div className="p-8 text-center border border-dashed border-slate-300 rounded-xl">
           <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-2xl mb-3 mx-auto">
-            {failedSources.length === SOURCES.length
+            {failedSources.length ===
+            SOURCES.length
               ? "⚠️"
               : "📄"}
           </div>
 
-          {failedSources.length === SOURCES.length ? (
+          {failedSources.length ===
+          SOURCES.length ? (
             <>
               <p className="text-sm text-red-700 font-medium">
                 {isNepali
@@ -482,7 +559,9 @@ export default function MyDocuments() {
 
               <button
                 type="button"
-                onClick={() => window.location.reload()}
+                onClick={() =>
+                  window.location.reload()
+                }
                 className="mt-3 text-xs font-semibold text-blue-900 underline cursor-pointer"
               >
                 {isNepali
@@ -507,26 +586,31 @@ export default function MyDocuments() {
           )}
         </div>
       ) : (
-        /* ----------------------------------------------------------------- */
-        /* Application List                                                  */
-        /* ----------------------------------------------------------------- */
+
+        /* --------------------------------------------------------------- */
+        /* Application List                                                */
+        /* --------------------------------------------------------------- */
 
         <div className="space-y-3">
           {documents.map((doc, index) => {
-            const terminal = TERMINAL[doc.status];
+            const terminal =
+              TERMINAL[doc.status];
 
-            const inChain = STAGES.some(
-              (stage) => stage.status === doc.status,
-            );
+            const currentStageIndex =
+              getStageIndex(doc.status);
+
+            const inChain =
+              currentStageIndex !== -1;
 
             return (
               <div
                 key={doc.id || index}
                 className="p-4 border border-slate-200 rounded-xl bg-slate-50/60"
               >
-                {/* --------------------------------------------------------- */}
-                {/* Application Header */}
-                {/* --------------------------------------------------------- */}
+
+                {/* ------------------------------------------------------- */}
+                {/* Application Header                                      */}
+                {/* ------------------------------------------------------- */}
 
                 <div className="flex justify-between items-start gap-4">
                   <div>
@@ -547,11 +631,21 @@ export default function MyDocuments() {
                           ).toLocaleDateString()
                         : "—"}
                     </p>
+
+                    {/* Application ID */}
+                    {doc.id && (
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        {isNepali
+                          ? "आवेदन नं.: "
+                          : "Application ID: "}
+                        {doc.id}
+                      </p>
+                    )}
                   </div>
 
-                  {/* ------------------------------------------------------- */}
-                  {/* Terminal Status Badge                                  */}
-                  {/* ------------------------------------------------------- */}
+                  {/* ----------------------------------------------------- */}
+                  {/* Terminal Status Badge                                */}
+                  {/* ----------------------------------------------------- */}
 
                   {terminal && (
                     <span
@@ -564,9 +658,9 @@ export default function MyDocuments() {
                   )}
                 </div>
 
-                {/* --------------------------------------------------------- */}
-                {/* Approval Stage Tracker                                   */}
-                {/* --------------------------------------------------------- */}
+                {/* ------------------------------------------------------- */}
+                {/* Approval Chain                                          */}
+                {/* ------------------------------------------------------- */}
 
                 {inChain ? (
                   <StageTracker
@@ -574,19 +668,22 @@ export default function MyDocuments() {
                     isNepali={isNepali}
                   />
                 ) : !terminal ? (
-                  /* ------------------------------------------------------- */
-                  /* Unknown Status                                          */
-                  /* ------------------------------------------------------- */
 
-                  <p className="mt-2 text-xs text-slate-400">
-                    {isNepali
-                      ? "स्थिति उपलब्ध छैन"
-                      : "Status unavailable"}
+                  /* ----------------------------------------------------- */
+                  /* Unknown Status                                        */
+                  /* ----------------------------------------------------- */
 
-                    {doc.status
-                      ? ` (${doc.status})`
-                      : ""}
-                  </p>
+                  <div className="mt-3 p-2.5 rounded-lg bg-slate-100 border border-slate-200">
+                    <p className="text-xs text-slate-500">
+                      {isNepali
+                        ? "स्थिति उपलब्ध छैन"
+                        : "Status unavailable"}
+
+                      {doc.status
+                        ? ` (${doc.status})`
+                        : ""}
+                    </p>
+                  </div>
                 ) : null}
               </div>
             );
