@@ -39,7 +39,8 @@ import AdminUsers from "./pages/admin/Users.jsx";
 import { LanguageProvider } from "./context/LanguageContext.jsx";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import { LoginProvider, LoginContext } from "./components/context/LoginContext.jsx";
-
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 import "./index.css";
 
 function ErrorBoundary() {
